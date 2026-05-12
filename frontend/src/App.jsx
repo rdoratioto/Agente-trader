@@ -1613,14 +1613,14 @@ function App() {
           <RadarSummaryCard icon="star" label="Favoritos" title={`${favoriteTickers.length} ativos`} detail={favoriteTickers.length ? favoriteTickers.join(", ") : "Nenhum favorito marcado ainda."} color="amber" />
         </section>
 
+        <section className="mt-6">
+          <DecisionSemaphore decision={safeSelectedAsset.decision} />
+        </section>
+
         <section className="mt-6 grid gap-4 lg:grid-cols-3">
           <TradeIdeaCard icon="check" title="Estudar compra" assets={buyCandidates} emptyText="Sem compra clara no radar agora." color="emerald" onAsk={handleChatPrompt} />
           <TradeIdeaCard icon="shield" title="Reduzir ou vender" assets={sellCandidates} emptyText="Nenhum ativo exigindo venda imediata pelo score." color="red" onAsk={handleChatPrompt} />
           <TradeIdeaCard icon="eye" title="Só observar" assets={watchCandidates} emptyText="Nada neutro no filtro atual." color="cyan" onAsk={handleChatPrompt} />
-        </section>
-
-        <section className="mt-6">
-          <DecisionSemaphore decision={safeSelectedAsset.decision} />
         </section>
 
         <section className="mt-8">
