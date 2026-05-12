@@ -120,6 +120,7 @@ const STORAGE_KEYS = {
   favorites: "agente-trader:favorites",
   profile: "agente-trader:profile",
   selectedTicker: "agente-trader:selected-ticker",
+  chatMemory: "agente-trader:chat-memory",
 };
 
 function createId(prefix = "id") {
@@ -701,27 +702,48 @@ function buildActionPlan(asset) {
 }
 
 function buildHumanizedAnswer({ opening, take, evidence, action, caveat }) {
-  return [
-    opening,
-    "",
-    `Leitura direta: ${take}`,
-    `Por quê: ${evidence}`,
-    `Ação prática: ${action}`,
-    `Cuidado: ${caveat || "isso é um radar de estudo, não uma ordem. Tamanho de posição e stop vêm antes de qualquer convicção."}`,
-  ].filter(Boolean).join("\n");
+  return [opening, take, evidence, action, caveat || "isso é um radar de estudo, não uma ordem. Tamanho de posição e stop vêm antes de qualquer convicção."].filter(Boolean).join("\n\n");
 }
 
-function buildTickerHintAnswer(ticker, profile) {
+function detectChatIntent(message) {
+  const text = normalizeText(message);
+  if (text.includes("comparar") || text.includes("compare") || text.includes("versus") || text.includes(" vs ")) return "compare";
+  if (text.includes("plano") || text.includes("entrada") || text.includes("stop") || text.includes("alvo")) return "plan";
+  if (text.includes("vender") || text.includes("sair") || text.includes("realizar") || text.includes("reduzir")) return "sell";
+  if (text.includes("comprar") || text.includes("compra") || text.includes("oportunidade") || text.includes("onde investir") || text.includes("melhor")) return "buy";
+  if (text.includes("carteira") || text.includes("alocar") || text.includes("posição") || text.includes("posicao")) return "portfolio";
+  if (text.includes("noticia") || text.includes("notícia") || text.includes("bloomberg")) return "news";
+  if (text.includes("risco") || text.includes("perigoso") || text.includes("evitar")) return "risk";
+  if (extractTickerFromMessage(message)) return "ticker";
+  return "general";
+}
+
+function resolveConversationTicker(message, memory) {
+  const explicit = extractTickerFromMessage(message);
+  if (explicit) return explicit;
+
+  const text = normalizeText(message);
+  const refersBack = /\b(ele|ela|esse|essa|isso|aquele|aquela|o papel|a ação|o ativo|esse papel|essa ação|esse ativo|nele|nela)\b/.test(text);
+  if (refersBack && memory?.lastTicker) return memory.lastTicker;
+
+  return null;
+}
+
+function buildTickerHintAnswer(ticker, profile, researchNote = "") {
   const hint = KNOWN_TICKER_HINTS[ticker];
   if (!hint) return null;
 
-  return buildHumanizedAnswer({
-    opening: `Sobre ${ticker}, eu iria por partes para não inventar informação.`,
-    take: `${hint.name} é um nome do setor ${hint.sector} e ${hint.style}.`,
-    evidence: `${hint.angle}. O ponto que mais importa olhar agora é ${hint.whatToCheck}.`,
-    action: `Se você quiser, eu posso transformar ${ticker} em um plano de estudo com leitura técnica e semáforo.`,
-    caveat: `sem o ativo carregado na watchlist eu não vou chutar preço ou score. Para um perfil ${profile.toLowerCase()}, eu trato isso como radar de estudo.`,
-  });
+  const parts = [
+    `Sobre ${ticker}, eu iria por partes para não inventar informação.`,
+    `${hint.name} é um nome do setor ${hint.sector} e ${hint.style}.`,
+    `${hint.angle}. O que vale olhar agora é ${hint.whatToCheck}.`,
+  ];
+
+  if (researchNote) parts.push(`O pano de fundo recente que eu puxei ajuda a ler o tom da notícia: ${researchNote}.`);
+
+  parts.push(`Se você quiser, eu transformo ${ticker} em um plano de estudo com leitura técnica e semáforo.`);
+  parts.push(`Sem o ativo carregado na watchlist, eu não vou chutar preço ou score. Para um perfil ${profile.toLowerCase()}, eu trato isso como radar de estudo.`);
+  return parts.join(" ");
 }
 
 function buildResearchNarrative(articles) {
@@ -745,7 +767,7 @@ function truncateWords(text, maxWords = 12) {
   return words.length <= maxWords ? words.join(" ") : `${words.slice(0, maxWords).join(" ")}...`;
 }
 
-function buildMarketQuery(message, profile, ticker = "") {
+function buildMarketQuery(message, profile, ticker = "", intent = "general") {
   const text = normalizeText(message);
   const focusTicker = String(ticker || extractTickerFromMessage(message) || "").toUpperCase();
   const generalTerms = [];
@@ -759,6 +781,12 @@ function buildMarketQuery(message, profile, ticker = "") {
   if (text.includes("dividend") || text.includes("provento")) generalTerms.push("dividend stocks OR payout");
   if (profile === "Conservador") generalTerms.push("defensive stocks OR dividends");
   if (profile === "Agressivo") generalTerms.push("volatile stocks OR momentum");
+  if (intent === "buy") generalTerms.push("buy signal OR breakout OR upside");
+  if (intent === "sell") generalTerms.push("selloff OR breakdown OR overbought");
+  if (intent === "compare") generalTerms.push("comparison OR relative strength OR sector");
+  if (intent === "plan") generalTerms.push("entry stop target OR trade plan");
+  if (intent === "risk") generalTerms.push("risk OR support OR resistance OR drawdown");
+  if (intent === "news") generalTerms.push("latest news OR earnings OR guidance");
 
   return generalTerms.filter(Boolean).join(" OR ") || "stock market OR equities OR central bank";
 }
@@ -808,11 +836,11 @@ function buildResearchDigest(articles) {
     .join("; ");
 }
 
-async function buildResearchBackedAnswer({ message, assets, profile, newsFeed = [] }) {
-  const ticker = extractTickerFromMessage(message);
+async function buildResearchBackedAnswer({ message, assets, profile, newsFeed = [], intent = "general", focusTicker = "" }) {
+  const ticker = focusTicker || extractTickerFromMessage(message);
   const safeAssets = assets.map(enrichAsset);
   const matchedAsset = ticker ? safeAssets.find((asset) => asset.ticker === ticker) : null;
-  const query = buildMarketQuery(message, profile, ticker);
+  const query = buildMarketQuery(message, profile, ticker, intent);
 
   let liveArticles = [];
   try {
@@ -836,7 +864,7 @@ async function buildResearchBackedAnswer({ message, assets, profile, newsFeed = 
       text: buildHumanizedAnswer({
         opening: `Fui olhar ${matchedAsset.ticker} no radar técnico e puxei o que saiu de mais recente para dar contexto.`,
         take: describeAssetShort(matchedAsset),
-        evidence: narrative,
+        evidence: `No noticiário recente, o tom ficou assim: ${narrative}`,
         action: `Se eu fosse te responder de forma prática, eu começaria por ${buildActionPlan(matchedAsset).replace(/^Meu plano de estudo para [^:]+:\s*/u, "")}`,
         caveat: `eu não vou te vender certeza: ${digest || "o contexto recente não fechou uma tese limpa."}`,
       }),
@@ -844,20 +872,14 @@ async function buildResearchBackedAnswer({ message, assets, profile, newsFeed = 
   }
 
   if (ticker) {
-    const tickerHint = buildTickerHintAnswer(ticker, profile);
-    const hintLines = tickerHint ? tickerHint.split("\n").filter(Boolean) : [];
-    const hintTake = hintLines[1] ? hintLines[1].replace(/^Leitura direta:\s*/u, "") : `eu tratei ${ticker} como um radar de estudo.`;
-    const hintAction = hintLines[3] ? hintLines[3].replace(/^Ação prática:\s*/u, "") : "se você quiser, eu adiciono esse ticker à watchlist e sigo com leitura técnica.";
-    const hintCaveat = hintLines[4] ? hintLines[4].replace(/^Cuidado:\s*/u, "") : "sem preço carregado, eu fico no contexto e no tom de mercado, não no chute.";
-
     return {
       focusTicker: ticker,
       text: buildHumanizedAnswer({
         opening: `Fui buscar ${ticker} na leitura recente para te responder com contexto, não no automático.`,
-        take: hintTake,
-        evidence: narrative,
-        action: hintAction,
-        caveat: hintCaveat,
+        take: buildTickerHintAnswer(ticker, profile, narrative) || `eu tratei ${ticker} como um radar de estudo.`,
+        evidence: `O que pesa agora é isso: ${narrative}`,
+        action: `Se você quiser, eu adiciono esse ticker à watchlist e sigo com leitura técnica.`,
+        caveat: `sem preço carregado, eu fico no contexto e no tom de mercado, não no chute.`,
       }),
     };
   }
@@ -1568,6 +1590,7 @@ function App() {
   const [chatInput, setChatInput] = useState("");
   const [marketStatus, setMarketStatus] = useState(() => getSaoPauloMarketStatus());
   const [marketNews, setMarketNews] = useState({ updatedAt: "", items: FALLBACK_NEWS });
+  const [chatMemory, setChatMemory] = useState(() => readStoredJson(STORAGE_KEYS.chatMemory, { lastTicker: "", lastIntent: "general", lastMessage: "" }));
   const [chatMessages, setChatMessages] = useState(() => [
     {
       id: "welcome",
@@ -1781,6 +1804,10 @@ function App() {
     writeStoredText(STORAGE_KEYS.selectedTicker, selectedTicker);
   }, [selectedTicker]);
 
+  useEffect(() => {
+    writeStoredJson(STORAGE_KEYS.chatMemory, chatMemory);
+  }, [chatMemory]);
+
   const filteredAssets = useMemo(() => {
     return enrichedAssets.filter((asset) => {
       const matchesProfile = profile === "Todos" || asset.profile === profile;
@@ -1805,11 +1832,15 @@ function App() {
     setChatInput("");
 
     try {
+      const intent = detectChatIntent(prompt);
+      const resolvedTicker = resolveConversationTicker(prompt, chatMemory);
       let answer = await buildResearchBackedAnswer({
         message: prompt,
         assets,
         profile,
         newsFeed: marketNews.items,
+        intent,
+        focusTicker: resolvedTicker,
       });
 
       if (!answer?.text && USE_BACKEND) {
@@ -1822,8 +1853,14 @@ function App() {
 
       if (answer.profileSuggestion) setProfile(answer.profileSuggestion);
       if (answer.focusTicker) setSelectedTicker(answer.focusTicker);
+      setChatMemory({
+        lastTicker: answer.focusTicker || resolvedTicker || chatMemory.lastTicker || "",
+        lastIntent: intent,
+        lastMessage: prompt,
+        updatedAt: new Date().toISOString(),
+      });
 
-      setChatMessages((current) => [...current, { id: createId("assistant"), role: "assistant", text: answer.text || "Não consegui montar uma resposta agora." }]);
+      setChatMessages((current) => [...current, { id: createId("assistant"), role: "assistant", text: answer.text || "Ainda não fechei uma leitura boa para isso. Se você me der o ticker ou o tipo de decisão, eu afino a resposta." }]);
     } catch (err) {
       const normalized = normalizeText(prompt);
       const mentionedAsset = assets.map(enrichAsset).find((asset) => normalized.includes(asset.ticker.toLowerCase()));
@@ -1831,13 +1868,19 @@ function App() {
 
       if (fallbackAnswer.profileSuggestion) setProfile(fallbackAnswer.profileSuggestion);
       if (fallbackAnswer.focusTicker) setSelectedTicker(fallbackAnswer.focusTicker);
+      setChatMemory({
+        lastTicker: fallbackAnswer.focusTicker || chatMemory.lastTicker || "",
+        lastIntent: detectChatIntent(prompt),
+        lastMessage: prompt,
+        updatedAt: new Date().toISOString(),
+      });
 
       setChatMessages((current) => [
         ...current,
         {
           id: createId("assistant"),
           role: "assistant",
-          text: `${fallbackAnswer.text}\n\nObs.: respondi pelo modo local porque o backend não respondeu agora.`,
+          text: fallbackAnswer.text,
         },
       ]);
     }
