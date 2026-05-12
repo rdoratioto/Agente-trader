@@ -22,6 +22,15 @@ const IS_GITHUB_PAGES = typeof window !== "undefined" && window.location.hostnam
 const USE_BACKEND = !IS_GITHUB_PAGES && SAFE_ENV.VITE_USE_BACKEND !== "false";
 
 const WATCHLIST = ["PETR4", "VALE3", "BOVA11", "HASH11", "MXRF11"];
+const FALLBACK_NEWS = [
+  {
+    title: "Radar de mercado em modo demo",
+    source: "Agente Trader",
+    url: "https://www.bloomberg.com/markets",
+    publishedAt: new Date().toISOString(),
+    summary: "As notícias reais são atualizadas pelo GitHub Actions durante o build do Pages.",
+  },
+];
 
 const ICONS = {
   bell: "🔔",
@@ -1252,14 +1261,8 @@ function TradeIdeaCard({ icon, title, assets, emptyText, color = "cyan", onAsk }
   );
 }
 
-function BloombergTicker() {
-  const items = [
-    { label: "Mercados globais seguem no radar antes de novos dados de juros", url: "https://www.bloomberg.com/markets" },
-    { label: "Investidores monitoram commodities, dólar e bolsas internacionais", url: "https://www.bloomberg.com/markets" },
-    { label: "Ações com RSI elevado exigem cautela antes de novas entradas", url: "https://www.bloomberg.com/markets/stocks" },
-    { label: "Radar técnico prioriza gestão de risco, suporte e resistência", url: "https://www.bloomberg.com/markets/stocks" },
-    { label: "Clique para abrir Bloomberg Markets e acompanhar manchetes atualizadas", url: "https://www.bloomberg.com/markets" },
-  ];
+function NewsTicker({ news }) {
+  const items = news.length ? news.slice(0, 8).map((item) => ({ label: `${item.source}: ${item.title}`, url: item.url })) : FALLBACK_NEWS.map((item) => ({ label: item.title, url: item.url }));
   const repeatedItems = [...items, ...items, ...items];
 
   return (
@@ -1284,6 +1287,38 @@ function BloombergTicker() {
   );
 }
 
+function MarketNewsPanel({ news, updatedAt }) {
+  const formattedUpdatedAt = updatedAt ? new Date(updatedAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "--";
+
+  return (
+    <section className="mt-8 rounded-3xl border border-white/10 bg-white/[0.06] p-6 shadow-2xl shadow-black/20">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2 text-cyan-100">
+            <Icon name="news" className="bg-cyan-300/10 text-cyan-300" />
+            <h2 className="text-2xl font-black text-white">Notícias reais de mercado</h2>
+          </div>
+          <p className="mt-2 text-sm text-slate-400">Feed público atualizado no deploy automático do GitHub Pages.</p>
+        </div>
+        <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs font-bold text-slate-300">Atualizado: {formattedUpdatedAt}</span>
+      </div>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-3">
+        {news.slice(0, 6).map((item) => (
+          <a key={`${item.source}-${item.title}`} href={item.url} target="_blank" rel="noreferrer" className="rounded-2xl border border-white/10 bg-black/20 p-4 transition hover:-translate-y-0.5 hover:bg-white/10">
+            <div className="flex items-center justify-between gap-3">
+              <span className="rounded-full bg-cyan-300/10 px-2 py-1 text-xs font-bold text-cyan-100">{item.source}</span>
+              <span className="text-xs text-slate-500">{new Date(item.publishedAt).toLocaleDateString("pt-BR")}</span>
+            </div>
+            <h3 className="mt-3 line-clamp-3 text-sm font-black leading-6 text-white">{item.title}</h3>
+            <p className="mt-2 line-clamp-3 text-xs leading-5 text-slate-400">{item.summary || "Abrir notícia na fonte."}</p>
+          </a>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function App() {
   const [assets, setAssets] = useState(fallbackRawAssets.map(enrichAsset));
   const [selectedTicker, setSelectedTicker] = useState(() => readStoredText(STORAGE_KEYS.selectedTicker, "HASH11"));
@@ -1301,6 +1336,7 @@ function App() {
   const [telegramStatus, setTelegramStatus] = useState("idle");
   const [chatInput, setChatInput] = useState("");
   const [marketStatus, setMarketStatus] = useState(() => getSaoPauloMarketStatus());
+  const [marketNews, setMarketNews] = useState({ updatedAt: "", items: FALLBACK_NEWS });
   const [chatMessages, setChatMessages] = useState(() => [
     {
       id: "welcome",
@@ -1484,6 +1520,25 @@ function App() {
   }, []);
 
   useEffect(() => {
+    let ignore = false;
+    fetch("news.json")
+      .then((response) => {
+        if (!response.ok) throw new Error(`News feed HTTP ${response.status}`);
+        return response.json();
+      })
+      .then((payload) => {
+        if (!ignore && Array.isArray(payload.items) && payload.items.length) setMarketNews(payload);
+      })
+      .catch(() => {
+        if (!ignore) setMarketNews({ updatedAt: new Date().toISOString(), items: FALLBACK_NEWS });
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  useEffect(() => {
     writeStoredJson(STORAGE_KEYS.favorites, favoriteTickers);
   }, [favoriteTickers]);
 
@@ -1627,6 +1682,8 @@ function App() {
           <AgentChat messages={chatMessages} input={chatInput} onInputChange={setChatInput} onSend={handleChatSubmit} onQuickAsk={handleChatPrompt} />
         </section>
 
+        <MarketNewsPanel news={marketNews.items} updatedAt={marketNews.updatedAt} />
+
         {error && <section className="mt-4 rounded-3xl border border-red-300/20 bg-red-300/10 p-4 text-sm text-red-100"><div className="flex items-start gap-3"><Icon name="alert" /><p>{error}. O painel voltou para dados simulados para não quebrar a experiência.</p></div></section>}
 
         <section className="mt-8 grid gap-6 lg:grid-cols-[1.2fr_0.9fr]">
@@ -1711,7 +1768,7 @@ function App() {
           <InfoBox icon="alert" title="Aviso importante" text="Os alertas são apoio à decisão e não recomendação financeira personalizada." color="amber" />
         </section>
       </main>
-      <BloombergTicker />
+      <NewsTicker news={marketNews.items} />
     </div>
   );
 }
