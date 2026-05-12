@@ -51,6 +51,13 @@ const ICONS = {
   chat: "💬",
   user: "👤",
   spark: "✦",
+  star: "★",
+};
+
+const STORAGE_KEYS = {
+  favorites: "agente-trader:favorites",
+  profile: "agente-trader:profile",
+  selectedTicker: "agente-trader:selected-ticker",
 };
 
 function createId(prefix = "id") {
@@ -63,6 +70,31 @@ function hasNotificationSupport() {
 
 function hasServiceWorkerSupport() {
   return typeof navigator !== "undefined" && "serviceWorker" in navigator;
+}
+
+function readStoredJson(key, fallback) {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const stored = window.localStorage.getItem(key);
+    return stored ? JSON.parse(stored) : fallback;
+  } catch (error) {
+    return fallback;
+  }
+}
+
+function readStoredText(key, fallback) {
+  if (typeof window === "undefined") return fallback;
+  return window.localStorage.getItem(key) || fallback;
+}
+
+function writeStoredJson(key, value) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+function writeStoredText(key, value) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(key, value);
 }
 
 function Icon({ name, className = "", size = 18 }) {
@@ -696,7 +728,7 @@ function AgentChat({ messages, input, onInputChange, onSend, onQuickAsk }) {
   );
 }
 
-function AssetCard({ asset, selected, onClick }) {
+function AssetCard({ asset, selected, favorite, onClick }) {
   const safeAsset = enrichAsset(asset);
   const isPositive = safeAsset.change >= 0;
   return (
@@ -705,6 +737,7 @@ function AssetCard({ asset, selected, onClick }) {
         <div>
           <div className="flex items-center gap-2">
             <h3 className="text-xl font-bold text-white">{safeAsset.ticker}</h3>
+            {favorite && <Icon name="star" className="text-amber-300" size={16} />}
             <span className="rounded-full bg-white/10 px-2 py-1 text-xs text-slate-300">{safeAsset.category}</span>
           </div>
           <p className="mt-1 text-sm text-slate-400">{safeAsset.name}</p>
@@ -770,11 +803,35 @@ function InfoBox({ icon, title, text, color = "cyan" }) {
   );
 }
 
+function RadarSummaryCard({ icon, label, title, detail, color = "cyan" }) {
+  const colorClasses = {
+    cyan: "border-cyan-300/20 bg-cyan-300/10 text-cyan-100",
+    emerald: "border-emerald-300/20 bg-emerald-300/10 text-emerald-100",
+    amber: "border-amber-300/20 bg-amber-300/10 text-amber-100",
+    red: "border-red-300/20 bg-red-300/10 text-red-100",
+  };
+
+  return (
+    <div className={`rounded-3xl border p-5 ${colorClasses[color]}`}>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide opacity-70">{label}</p>
+          <p className="mt-2 text-2xl font-black">{title}</p>
+          <p className="mt-2 text-sm leading-6 opacity-80">{detail}</p>
+        </div>
+        <Icon name={icon} size={24} />
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [assets, setAssets] = useState(fallbackRawAssets.map(enrichAsset));
-  const [selectedTicker, setSelectedTicker] = useState("HASH11");
-  const [profile, setProfile] = useState("Todos");
+  const [selectedTicker, setSelectedTicker] = useState(() => readStoredText(STORAGE_KEYS.selectedTicker, "HASH11"));
+  const [profile, setProfile] = useState(() => readStoredText(STORAGE_KEYS.profile, "Todos"));
   const [query, setQuery] = useState("");
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [favoriteTickers, setFavoriteTickers] = useState(() => readStoredJson(STORAGE_KEYS.favorites, ["HASH11", "MXRF11"]));
   const [loading, setLoading] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState("mock");
   const [error, setError] = useState("");
@@ -795,6 +852,27 @@ function App() {
   const selectedAsset = assets.find((asset) => asset.ticker === selectedTicker) || assets[0] || enrichAsset(fallbackRawAssets[0]);
   const safeSelectedAsset = enrichAsset(selectedAsset);
   const selectedAssetAlerts = alerts.filter((alert) => alert.ticker === safeSelectedAsset.ticker);
+  const favoriteSet = useMemo(() => new Set(favoriteTickers), [favoriteTickers]);
+  const selectedIsFavorite = favoriteSet.has(safeSelectedAsset.ticker);
+  const enrichedAssets = useMemo(() => assets.map(enrichAsset), [assets]);
+  const radarSummary = useMemo(() => {
+    const ranked = rankAssetsForConversation(enrichedAssets, profile);
+    const best = ranked.find((asset) => asset.signal !== "Vender") || ranked[0];
+    const riskiest = [...enrichedAssets].sort((a, b) => {
+      const aRisk = a.risk.includes("Muito") ? 3 : a.risk === "Alto" ? 2 : 1;
+      const bRisk = b.risk.includes("Muito") ? 3 : b.risk === "Alto" ? 2 : 1;
+      return bRisk - aRisk || b.score - a.score;
+    })[0];
+
+    return { best, riskiest };
+  }, [enrichedAssets, profile]);
+
+  function toggleSelectedFavorite() {
+    setFavoriteTickers((current) => {
+      if (current.includes(safeSelectedAsset.ticker)) return current.filter((ticker) => ticker !== safeSelectedAsset.ticker);
+      return [...current, safeSelectedAsset.ticker].sort();
+    });
+  }
 
   function sendBrowserNotification(alert) {
     if (!hasNotificationSupport() || window.Notification.permission !== "granted") return;
@@ -931,13 +1009,26 @@ function App() {
     return () => clearTimeout(timeout);
   }, [toast]);
 
+  useEffect(() => {
+    writeStoredJson(STORAGE_KEYS.favorites, favoriteTickers);
+  }, [favoriteTickers]);
+
+  useEffect(() => {
+    writeStoredText(STORAGE_KEYS.profile, profile);
+  }, [profile]);
+
+  useEffect(() => {
+    writeStoredText(STORAGE_KEYS.selectedTicker, selectedTicker);
+  }, [selectedTicker]);
+
   const filteredAssets = useMemo(() => {
-    return assets.map(enrichAsset).filter((asset) => {
+    return enrichedAssets.filter((asset) => {
       const matchesProfile = profile === "Todos" || asset.profile === profile;
+      const matchesFavorite = !showFavoritesOnly || favoriteSet.has(asset.ticker);
       const text = `${asset.ticker} ${asset.name} ${asset.category}`.toLowerCase();
-      return matchesProfile && text.includes(query.toLowerCase());
+      return matchesProfile && matchesFavorite && text.includes(query.toLowerCase());
     });
-  }, [assets, profile, query]);
+  }, [enrichedAssets, favoriteSet, profile, query, showFavoritesOnly]);
 
   const unreadAlerts = alerts.filter((alert) => !alert.read).length;
   const providerName = USE_BACKEND ? "Backend API" : "Mock local";
@@ -1034,8 +1125,15 @@ function App() {
           </div>
 
           <button onClick={loadMarketData} disabled={loading} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-5 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/20 disabled:cursor-not-allowed disabled:opacity-60"><Icon name="refresh" className={loading ? "animate-spin" : ""} /> Atualizar</button>
+          <button onClick={() => setShowFavoritesOnly((current) => !current)} className={`inline-flex items-center justify-center gap-2 rounded-2xl border px-5 py-3 text-sm font-bold transition ${showFavoritesOnly ? "border-amber-300/50 bg-amber-300/20 text-amber-100" : "border-white/10 bg-black/20 text-slate-200 hover:bg-white/10"}`}><Icon name="star" /> Favoritos</button>
           <button onClick={registerWebPush} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-5 py-3 text-sm font-bold text-amber-100 transition hover:bg-amber-300/20"><Icon name="monitor" /> {webPushStatus === "subscribed" ? "Web Push ativo" : browserPermission === "denied" ? "Push bloqueado" : "Ativar Web Push"}</button>
           <button onClick={() => sendTelegramAlert(selectedAssetAlerts[0] || alerts[0])} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-300/30 bg-emerald-300/10 px-5 py-3 text-sm font-bold text-emerald-100 transition hover:bg-emerald-300/20"><Icon name="send" /> {telegramStatus === "sending" ? "Enviando..." : telegramStatus === "sent" ? "Telegram OK" : "Testar Telegram"}</button>
+        </section>
+
+        <section className="mt-6 grid gap-4 lg:grid-cols-3">
+          <RadarSummaryCard icon="spark" label="Melhor estudo" title={radarSummary.best?.ticker || "--"} detail={`${radarSummary.best?.signal || "Sem sinal"} com score ${radarSummary.best?.score ?? "--"}/100 para perfil ${profile}.`} color="emerald" />
+          <RadarSummaryCard icon="alert" label="Maior atenção" title={radarSummary.riskiest?.ticker || "--"} detail={`${radarSummary.riskiest?.risk || "Risco não calculado"} e RSI ${radarSummary.riskiest?.rsi?.toFixed ? radarSummary.riskiest.rsi.toFixed(1) : "--"}.`} color="red" />
+          <RadarSummaryCard icon="star" label="Favoritos" title={`${favoriteTickers.length} ativos`} detail={favoriteTickers.length ? favoriteTickers.join(", ") : "Nenhum favorito marcado ainda."} color="amber" />
         </section>
 
         <section className="mt-8">
@@ -1047,14 +1145,18 @@ function App() {
         <section className="mt-8 grid gap-6 lg:grid-cols-[1.2fr_0.9fr]">
           <div>
             <div className="mb-4 flex items-center justify-between"><h2 className="text-2xl font-bold text-white">Watchlist</h2><p className="text-sm text-slate-400">{filteredAssets.length} ativos encontrados</p></div>
-            <div className="grid gap-4 md:grid-cols-2">{filteredAssets.map((asset) => <AssetCard key={asset.ticker} asset={asset} selected={selectedTicker === asset.ticker} onClick={() => setSelectedTicker(asset.ticker)} />)}</div>
+            {filteredAssets.length === 0 && <div className="rounded-3xl border border-white/10 bg-white/[0.06] p-6 text-sm text-slate-300">Nenhum ativo encontrado com os filtros atuais.</div>}
+            <div className="grid gap-4 md:grid-cols-2">{filteredAssets.map((asset) => <AssetCard key={asset.ticker} asset={asset} favorite={favoriteSet.has(asset.ticker)} selected={selectedTicker === asset.ticker} onClick={() => setSelectedTicker(asset.ticker)} />)}</div>
           </div>
 
           <aside className="space-y-6">
             <div className="rounded-3xl border border-white/10 bg-white/[0.07] p-6 shadow-2xl shadow-black/20">
               <div className="flex items-start justify-between gap-4">
                 <div><p className="text-sm text-slate-400">Análise técnica do ativo</p><h2 className="mt-1 text-3xl font-black text-white">{safeSelectedAsset.ticker}</h2><p className="text-sm text-slate-400">{safeSelectedAsset.name}</p></div>
-                <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${badgeClass(safeSelectedAsset.signal)}`}>{safeSelectedAsset.signal}</span>
+                <div className="flex flex-col items-end gap-2">
+                  <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${badgeClass(safeSelectedAsset.signal)}`}>{safeSelectedAsset.signal}</span>
+                  <button onClick={toggleSelectedFavorite} className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-bold transition ${selectedIsFavorite ? "border-amber-300/40 bg-amber-300/15 text-amber-200" : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"}`}><Icon name="star" size={14} /> {selectedIsFavorite ? "Favorito" : "Favoritar"}</button>
+                </div>
               </div>
 
               <div className="mt-5 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
