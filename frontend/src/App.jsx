@@ -1663,8 +1663,8 @@ function App() {
         <section className="mt-6 grid items-start gap-4 lg:grid-cols-[0.9fr_1.1fr]">
           <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
             <RadarSummaryCard icon="spark" label="Melhor estudo" title={radarSummary.best?.ticker || "--"} detail={`${radarSummary.best?.signal || "Sem sinal"} com score ${radarSummary.best?.score ?? "--"}/100.`} color="emerald" />
-            <RadarSummaryCard icon="alert" label="Maior atenção" title={radarSummary.riskiest?.ticker || "--"} detail={`${radarSummary.riskiest?.risk || "Risco não calculado"} · RSI ${radarSummary.riskiest?.rsi?.toFixed ? radarSummary.riskiest.rsi.toFixed(1) : "--"}.`} color="red" />
             <RadarSummaryCard icon="star" label="Favoritos" title={`${favoriteTickers.length} ativos`} detail={favoriteTickers.length ? favoriteTickers.join(", ") : "Nenhum favorito."} color="amber" />
+            <RadarSummaryCard icon="alert" label="Maior atenção" title={radarSummary.riskiest?.ticker || "--"} detail={`${radarSummary.riskiest?.risk || "Risco não calculado"} · RSI ${radarSummary.riskiest?.rsi?.toFixed ? radarSummary.riskiest.rsi.toFixed(1) : "--"}.`} color="red" />
           </div>
           <DecisionSemaphore decision={safeSelectedAsset.decision} />
         </section>
