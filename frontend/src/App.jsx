@@ -1619,6 +1619,10 @@ function App() {
           <TradeIdeaCard icon="eye" title="Só observar" assets={watchCandidates} emptyText="Nada neutro no filtro atual." color="cyan" onAsk={handleChatPrompt} />
         </section>
 
+        <section className="mt-6">
+          <DecisionSemaphore decision={safeSelectedAsset.decision} />
+        </section>
+
         <section className="mt-8">
           <AgentChat messages={chatMessages} input={chatInput} onInputChange={setChatInput} onSend={handleChatSubmit} onQuickAsk={handleChatPrompt} />
         </section>
@@ -1654,10 +1658,6 @@ function App() {
               </div>
 
               <div className="mt-6 h-56 rounded-3xl border border-white/10 bg-black/20 p-4"><MiniChart data={safeSelectedAsset.data} positive={safeSelectedAsset.change >= 0} /></div>
-
-              <div className="mt-6">
-                <DecisionSemaphore decision={safeSelectedAsset.decision} />
-              </div>
 
               <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <MetricCard icon="chart" label="SMA 9" value={formatCurrencyBRL(safeSelectedAsset.sma9)} />
