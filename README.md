@@ -96,6 +96,22 @@ Na Vercel:
 2. Mantenha o Root Directory como a raiz do repositório
 3. Faça o deploy
 
+## Deploy demo no GitHub Pages
+
+O repositório também inclui GitHub Actions para publicar o frontend estático no GitHub Pages.
+
+URL esperada após o workflow rodar:
+
+```txt
+https://rdoratioto.github.io/Agente-trader/
+```
+
+Se o GitHub pedir configuração manual, vá em:
+
+```txt
+Settings > Pages > Build and deployment > Source: GitHub Actions
+```
+
 ---
 
 ## Deploy completo
