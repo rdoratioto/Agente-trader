@@ -986,25 +986,27 @@ function TradeIdeaCard({ icon, title, assets, emptyText, color = "cyan", onAsk }
 
 function BloombergTicker() {
   const items = [
-    { label: "Bloomberg Markets", url: "https://www.bloomberg.com/markets" },
-    { label: "Stocks", url: "https://www.bloomberg.com/markets/stocks" },
-    { label: "Market news", url: "https://www.bloomberg.com/markets" },
-    { label: "Global indexes", url: "https://www.bloomberg.com/markets/stocks" },
+    { label: "Mercados globais seguem no radar antes de novos dados de juros", url: "https://www.bloomberg.com/markets" },
+    { label: "Investidores monitoram commodities, dólar e bolsas internacionais", url: "https://www.bloomberg.com/markets" },
+    { label: "Ações com RSI elevado exigem cautela antes de novas entradas", url: "https://www.bloomberg.com/markets/stocks" },
+    { label: "Radar técnico prioriza gestão de risco, suporte e resistência", url: "https://www.bloomberg.com/markets/stocks" },
+    { label: "Clique para abrir Bloomberg Markets e acompanhar manchetes atualizadas", url: "https://www.bloomberg.com/markets" },
   ];
   const repeatedItems = [...items, ...items, ...items];
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-cyan-300/20 bg-slate-950/95 text-cyan-50 shadow-2xl backdrop-blur-xl">
-      <div className="flex items-center gap-3 overflow-hidden py-2">
-        <div className="ml-3 inline-flex shrink-0 items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-300/10 px-3 py-1 text-xs font-black">
+    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-red-500/30 bg-slate-950 text-white shadow-2xl">
+      <div className="flex h-12 items-center overflow-hidden">
+        <div className="flex h-full shrink-0 items-center gap-2 bg-red-600 px-4 text-xs font-black uppercase tracking-wide">
           <Icon name="news" size={14} />
-          Bloomberg
+          Mercado agora
         </div>
+        <div className="hidden h-full shrink-0 items-center border-r border-white/10 bg-white px-4 text-xs font-black uppercase text-slate-950 sm:flex">Radar</div>
         <div className="min-w-0 flex-1 overflow-hidden">
-          <div className="flex w-max animate-[ticker_42s_linear_infinite] items-center gap-6 whitespace-nowrap text-sm">
+          <div className="flex w-max animate-[ticker_55s_linear_infinite] items-center gap-8 whitespace-nowrap px-4 text-sm font-semibold">
             {repeatedItems.map((item, index) => (
-              <a key={`${item.label}-${index}`} href={item.url} target="_blank" rel="noreferrer" className="text-cyan-100/85 transition hover:text-cyan-200">
-                {item.label}
+              <a key={`${item.label}-${index}`} href={item.url} target="_blank" rel="noreferrer" className="text-slate-100 transition hover:text-red-200">
+                <span className="mr-3 text-red-300">●</span>{item.label}
               </a>
             ))}
           </div>
