@@ -73,21 +73,28 @@ VITE_API_BASE_URL=http://localhost:3001
 
 ## Deploy demo na Vercel
 
-Suba o repositório para o GitHub e importe o projeto `frontend` na Vercel.
+O repositório já inclui `vercel.json` na raiz para publicar apenas o frontend em modo demo.
 
 Configurações:
 
 ```txt
 Framework: Vite
-Build command: npm run build
-Output directory: dist
+Install command: cd frontend && npm ci
+Build command: cd frontend && npm run build
+Output directory: frontend/dist
 ```
 
-Environment Variable:
+Environment Variable opcional, já refletida em `frontend/.env.production`:
 
 ```env
 VITE_USE_BACKEND=false
 ```
+
+Na Vercel:
+
+1. Importe `https://github.com/rdoratioto/Agente-trader`
+2. Mantenha o Root Directory como a raiz do repositório
+3. Faça o deploy
 
 ---
 
