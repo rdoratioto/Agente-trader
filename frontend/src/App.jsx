@@ -32,6 +32,9 @@ const FALLBACK_NEWS = [
   },
 ];
 
+const LIVE_RESEARCH_CACHE = new Map();
+const LIVE_RESEARCH_TTL_MS = 10 * 60 * 1000;
+
 const KNOWN_TICKER_HINTS = {
   BBAS3: {
     name: "Banco do Brasil",
@@ -721,10 +724,154 @@ function buildTickerHintAnswer(ticker, profile) {
   });
 }
 
+function buildResearchNarrative(articles) {
+  const top = (Array.isArray(articles) ? articles : []).filter(Boolean).slice(0, 3);
+  if (!top.length) return "não achei manchete recente que ajudasse a fechar uma leitura melhor agora.";
+
+  const headlines = top.map((article) => `${article.source}: ${truncateWords(article.title, 9)}`);
+  if (headlines.length === 1) return `achei um pano de fundo curto: ${headlines[0]}.`;
+  if (headlines.length === 2) return `o pano de fundo ficou assim: ${headlines[0]} e ${headlines[1]}.`;
+  return `o pano de fundo ficou assim: ${headlines[0]}, ${headlines[1]} e ${headlines[2]}.`;
+}
+
 function extractTickerFromMessage(message) {
   const normalized = String(message || "").toUpperCase();
   const matches = normalized.match(/\b[A-Z]{4}\d{1,2}\b/g) || [];
   return matches[0] || null;
+}
+
+function truncateWords(text, maxWords = 12) {
+  const words = String(text || "").split(/\s+/).filter(Boolean);
+  return words.length <= maxWords ? words.join(" ") : `${words.slice(0, maxWords).join(" ")}...`;
+}
+
+function buildMarketQuery(message, profile, ticker = "") {
+  const text = normalizeText(message);
+  const focusTicker = String(ticker || extractTickerFromMessage(message) || "").toUpperCase();
+  const generalTerms = [];
+
+  if (focusTicker) generalTerms.push(`${focusTicker} stock OR earnings OR dividend OR results`);
+  if (text.includes("banco") || text.includes("banc")) generalTerms.push("banks OR banking OR credit risk");
+  if (text.includes("petroleo") || text.includes("óleo") || text.includes("petro")) generalTerms.push("oil OR energy OR Petrobras");
+  if (text.includes("miner") || text.includes("vale")) generalTerms.push("iron ore OR mining OR Vale");
+  if (text.includes("noticia") || text.includes("notícia") || text.includes("mercado")) generalTerms.push("stock market OR equities OR central bank");
+  if (text.includes("juros") || text.includes("inflacao") || text.includes("inflação")) generalTerms.push("interest rates OR inflation");
+  if (text.includes("dividend") || text.includes("provento")) generalTerms.push("dividend stocks OR payout");
+  if (profile === "Conservador") generalTerms.push("defensive stocks OR dividends");
+  if (profile === "Agressivo") generalTerms.push("volatile stocks OR momentum");
+
+  return generalTerms.filter(Boolean).join(" OR ") || "stock market OR equities OR central bank";
+}
+
+async function fetchLiveResearchArticles(query) {
+  const normalizedQuery = String(query || "").trim();
+  if (!normalizedQuery) return [];
+
+  const cached = LIVE_RESEARCH_CACHE.get(normalizedQuery);
+  if (cached && Date.now() - cached.timestamp < LIVE_RESEARCH_TTL_MS) return cached.items;
+
+  const url = new URL("https://api.gdeltproject.org/api/v2/doc/doc");
+  url.searchParams.set("query", normalizedQuery);
+  url.searchParams.set("mode", "ArtList");
+  url.searchParams.set("format", "json");
+  url.searchParams.set("maxrecords", "6");
+  url.searchParams.set("sort", "DateDesc");
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      Accept: "application/json",
+    },
+  });
+  if (!response.ok) throw new Error(`GDELT HTTP ${response.status}`);
+
+  const payload = await response.json();
+  const articles = Array.isArray(payload.articles) ? payload.articles : [];
+  const items = articles
+    .map((article) => ({
+      title: truncateWords(article.title || "", 12),
+      source: article.domain ? String(article.domain).replace(/^www\./, "") : "GDELT",
+      url: String(article.url || "").trim(),
+      publishedAt: article.seendate ? new Date(article.seendate.replace(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/, "$1-$2-$3T$4:$5:$6Z")).toISOString() : new Date().toISOString(),
+      summary: article.sourcecountry ? `País: ${article.sourcecountry} · idioma: ${article.language || "n/d"}` : "Notícia pública indexada pelo GDELT.",
+    }))
+    .filter((item) => item.title && item.url);
+
+  LIVE_RESEARCH_CACHE.set(normalizedQuery, { timestamp: Date.now(), items });
+  return items;
+}
+
+function buildResearchDigest(articles) {
+  const top = (Array.isArray(articles) ? articles : []).filter(Boolean).slice(0, 3);
+  if (!top.length) return "Não achei manchetes úteis para amarrar com a pergunta.";
+  return top
+    .map((article) => `${article.source}: ${truncateWords(article.title, 10)}`)
+    .join("; ");
+}
+
+async function buildResearchBackedAnswer({ message, assets, profile, newsFeed = [] }) {
+  const ticker = extractTickerFromMessage(message);
+  const safeAssets = assets.map(enrichAsset);
+  const matchedAsset = ticker ? safeAssets.find((asset) => asset.ticker === ticker) : null;
+  const query = buildMarketQuery(message, profile, ticker);
+
+  let liveArticles = [];
+  try {
+    liveArticles = await fetchLiveResearchArticles(query);
+  } catch (error) {
+    liveArticles = [];
+  }
+
+  const combinedArticles = [...liveArticles, ...(Array.isArray(newsFeed) ? newsFeed : [])]
+    .filter((item) => item && item.title && item.url)
+    .filter((item, index, list) => list.findIndex((candidate) => candidate.url === item.url || candidate.title === item.title) === index)
+    .slice(0, 6);
+
+  const digest = buildResearchDigest(combinedArticles);
+  const narrative = buildResearchNarrative(combinedArticles);
+  const focusAsset = matchedAsset || rankAssetsForConversation(safeAssets, profile)[0] || null;
+
+  if (matchedAsset) {
+    return {
+      focusTicker: matchedAsset.ticker,
+      text: buildHumanizedAnswer({
+        opening: `Fui olhar ${matchedAsset.ticker} no radar técnico e puxei o que saiu de mais recente para dar contexto.`,
+        take: describeAssetShort(matchedAsset),
+        evidence: narrative,
+        action: `Se eu fosse te responder de forma prática, eu começaria por ${buildActionPlan(matchedAsset).replace(/^Meu plano de estudo para [^:]+:\s*/u, "")}`,
+        caveat: `eu não vou te vender certeza: ${digest || "o contexto recente não fechou uma tese limpa."}`,
+      }),
+    };
+  }
+
+  if (ticker) {
+    const tickerHint = buildTickerHintAnswer(ticker, profile);
+    const hintLines = tickerHint ? tickerHint.split("\n").filter(Boolean) : [];
+    const hintTake = hintLines[1] ? hintLines[1].replace(/^Leitura direta:\s*/u, "") : `eu tratei ${ticker} como um radar de estudo.`;
+    const hintAction = hintLines[3] ? hintLines[3].replace(/^Ação prática:\s*/u, "") : "se você quiser, eu adiciono esse ticker à watchlist e sigo com leitura técnica.";
+    const hintCaveat = hintLines[4] ? hintLines[4].replace(/^Cuidado:\s*/u, "") : "sem preço carregado, eu fico no contexto e no tom de mercado, não no chute.";
+
+    return {
+      focusTicker: ticker,
+      text: buildHumanizedAnswer({
+        opening: `Fui buscar ${ticker} na leitura recente para te responder com contexto, não no automático.`,
+        take: hintTake,
+        evidence: narrative,
+        action: hintAction,
+        caveat: hintCaveat,
+      }),
+    };
+  }
+
+  return {
+    focusTicker: focusAsset?.ticker,
+    text: buildHumanizedAnswer({
+      opening: "Fui buscar contexto recente para não te responder no escuro.",
+      take: focusAsset ? `${focusAsset.ticker} é o nome que mais chama atenção no radar agora.` : "não apareceu um ativo com vantagem clara.",
+      evidence: narrative,
+      action: focusAsset ? `Se você quiser, eu aprofundo em ${focusAsset.ticker} com plano e semáforo.` : "Se me disser o perfil ou o papel, eu afunilo a resposta.",
+      caveat: digest || "isso é apoio de estudo, não execução automática.",
+    }),
+  };
 }
 
 function buildInvestmentAnswer(message, assets, profile) {
@@ -1658,14 +1805,19 @@ function App() {
     setChatInput("");
 
     try {
-      let answer;
+      let answer = await buildResearchBackedAnswer({
+        message: prompt,
+        assets,
+        profile,
+        newsFeed: marketNews.items,
+      });
 
-      if (USE_BACKEND) {
+      if (!answer?.text && USE_BACKEND) {
         answer = await sendChatToBackend({ message: prompt, profile, symbols: WATCHLIST });
-      } else {
-        const normalized = normalizeText(prompt);
-        const mentionedAsset = assets.map(enrichAsset).find((asset) => normalized.includes(asset.ticker.toLowerCase()));
-        answer = mentionedAsset ? { focusTicker: mentionedAsset.ticker, text: explainAssetForChat(mentionedAsset) } : buildInvestmentAnswer(prompt, assets, profile);
+      }
+
+      if (!answer?.text) {
+        answer = buildInvestmentAnswer(prompt, assets, profile);
       }
 
       if (answer.profileSuggestion) setProfile(answer.profileSuggestion);
