@@ -11,3 +11,13 @@ body {
   min-width: 320px;
   min-height: 100vh;
 }
+
+@keyframes ticker {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-33.333%);
+  }
+}

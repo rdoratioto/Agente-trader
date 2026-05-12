@@ -52,6 +52,10 @@ const ICONS = {
   user: "👤",
   spark: "✦",
   star: "★",
+  list: "☷",
+  shield: "◇",
+  scale: "⚖",
+  news: "◆",
 };
 
 const STORAGE_KEYS = {
@@ -486,6 +490,35 @@ function buildInvestmentAnswer(message, assets, profile) {
   const weak = [...safeAssets].sort((a, b) => a.score - b.score).slice(0, 2);
   const strong = best[0];
 
+  if (text.includes("plano") || text.includes("entrada") || text.includes("stop") || text.includes("alvo")) {
+    return {
+      focusTicker: strong?.ticker,
+      text: `Plano de estudo do radar: começar por ${strong?.ticker || "nenhum ativo"}. Entrada: ${strong?.entry || "--"}. Stop: ${strong?.stop || "--"}. Alvo: ${strong?.target || "--"}. Critério: só faz sentido estudar compra se o preço respeitar o suporte, o RSI não estiver esticado demais e o tamanho da posição couber no seu risco. Se perder suporte, a tese muda para proteção.`,
+    };
+  }
+
+  if (text.includes("comparar") || text.includes("compare")) {
+    const comparison = ranked.slice(0, 4).map((asset) => `${asset.ticker}: score ${asset.score}/100, sinal ${asset.signal}, risco ${asset.risk}`).join("; ");
+    return {
+      focusTicker: ranked[0]?.ticker,
+      text: `Comparação rápida do radar: ${comparison}. Para estudar primeiro, eu escolheria ${ranked[0]?.ticker || "nenhum ativo"} porque combina melhor score, sinal e encaixe de perfil. Para reduzir risco, eu deixaria ${weak[0]?.ticker || "o ativo mais fraco"} em observação antes de aumentar exposição.`,
+    };
+  }
+
+  if (text.includes("carteira") || text.includes("alocar") || text.includes("posicao") || text.includes("posição")) {
+    const conservative = rankAssetsForConversation(safeAssets, "Conservador").slice(0, 2);
+    const growth = rankAssetsForConversation(safeAssets, "Agressivo").filter((asset) => asset.signal !== "Vender").slice(0, 2);
+    return {
+      text: `Para montar uma carteira de estudo, eu separaria em blocos: base defensiva com ${conservative.map((asset) => asset.ticker).join(", ") || "--"} e bloco de oportunidade com ${growth.map((asset) => asset.ticker).join(", ") || "--"}. Eu evitaria concentrar tudo no ativo de maior score; o radar ajuda a priorizar, mas gestão de posição vem antes da convicção.`,
+    };
+  }
+
+  if (text.includes("noticia") || text.includes("notícia") || text.includes("bloomberg")) {
+    return {
+      text: "Eu deixei uma faixa de notícias/atalhos de mercado no rodapé com links para Bloomberg Markets e Bloomberg Stocks. Como este deploy é estático e gratuito, eu não leio manchetes fechadas em tempo real dentro do app; uso os links oficiais para você abrir a cobertura atualizada.",
+    };
+  }
+
   if (text.includes("conservador")) {
     const conservative = rankAssetsForConversation(safeAssets, "Conservador").filter((asset) => !asset.risk.includes("Muito")).slice(0, 3);
     return {
@@ -677,7 +710,16 @@ function Toast({ alert, onClose, onOpen }) {
 }
 
 function AgentChat({ messages, input, onInputChange, onSend, onQuickAsk }) {
-  const quickPrompts = ["Onde investir hoje?", "O que eu deveria evitar?", "Sou conservador", "Sou agressivo", "O que vender?"];
+  const quickPrompts = [
+    "Onde investir hoje?",
+    "O que comprar?",
+    "O que vender?",
+    "Monte um plano",
+    "Compare os ativos",
+    "Sou conservador",
+    "Sou agressivo",
+    "Ver notícias Bloomberg",
+  ];
 
   return (
     <div className="rounded-3xl border border-cyan-300/20 bg-cyan-300/10 p-5 shadow-2xl shadow-black/20">
@@ -825,6 +867,70 @@ function RadarSummaryCard({ icon, label, title, detail, color = "cyan" }) {
   );
 }
 
+function TradeIdeaCard({ icon, title, assets, emptyText, color = "cyan", onAsk }) {
+  const colorClasses = {
+    cyan: "border-cyan-300/20 bg-cyan-300/10 text-cyan-100",
+    emerald: "border-emerald-300/20 bg-emerald-300/10 text-emerald-100",
+    amber: "border-amber-300/20 bg-amber-300/10 text-amber-100",
+    red: "border-red-300/20 bg-red-300/10 text-red-100",
+  };
+
+  return (
+    <div className={`rounded-3xl border p-5 ${colorClasses[color]}`}>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <Icon name={icon} size={18} />
+            <h3 className="font-black">{title}</h3>
+          </div>
+          <div className="mt-4 space-y-3">
+            {assets.length === 0 && <p className="text-sm opacity-75">{emptyText}</p>}
+            {assets.map((asset) => (
+              <button key={asset.ticker} onClick={() => onAsk(`Explique ${asset.ticker} e monte plano com entrada, stop e alvo`)} className="w-full rounded-2xl border border-white/10 bg-black/20 p-3 text-left transition hover:bg-white/10">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-black">{asset.ticker}</span>
+                  <span className="text-xs font-bold opacity-75">Score {asset.score}/100</span>
+                </div>
+                <p className="mt-1 text-xs leading-5 opacity-75">{asset.signal} · {asset.risk} · entrada {asset.entry}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BloombergTicker() {
+  const items = [
+    { label: "Bloomberg Markets", url: "https://www.bloomberg.com/markets" },
+    { label: "Stocks", url: "https://www.bloomberg.com/markets/stocks" },
+    { label: "Market news", url: "https://www.bloomberg.com/markets" },
+    { label: "Global indexes", url: "https://www.bloomberg.com/markets/stocks" },
+  ];
+  const repeatedItems = [...items, ...items, ...items];
+
+  return (
+    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-cyan-300/20 bg-slate-950/95 text-cyan-50 shadow-2xl backdrop-blur-xl">
+      <div className="flex items-center gap-3 overflow-hidden py-2">
+        <div className="ml-3 inline-flex shrink-0 items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-300/10 px-3 py-1 text-xs font-black">
+          <Icon name="news" size={14} />
+          Bloomberg
+        </div>
+        <div className="min-w-0 flex-1 overflow-hidden">
+          <div className="flex w-max animate-[ticker_42s_linear_infinite] items-center gap-6 whitespace-nowrap text-sm">
+            {repeatedItems.map((item, index) => (
+              <a key={`${item.label}-${index}`} href={item.url} target="_blank" rel="noreferrer" className="text-cyan-100/85 transition hover:text-cyan-200">
+                {item.label}
+              </a>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [assets, setAssets] = useState(fallbackRawAssets.map(enrichAsset));
   const [selectedTicker, setSelectedTicker] = useState(() => readStoredText(STORAGE_KEYS.selectedTicker, "HASH11"));
@@ -866,6 +972,15 @@ function App() {
 
     return { best, riskiest };
   }, [enrichedAssets, profile]);
+  const buyCandidates = useMemo(() => {
+    return rankAssetsForConversation(enrichedAssets, profile).filter((asset) => asset.signal !== "Vender" && asset.score >= 65).slice(0, 3);
+  }, [enrichedAssets, profile]);
+  const sellCandidates = useMemo(() => {
+    return [...enrichedAssets].filter((asset) => asset.signal === "Vender" || asset.score <= 45 || asset.rsi >= 82).sort((a, b) => a.score - b.score).slice(0, 3);
+  }, [enrichedAssets]);
+  const watchCandidates = useMemo(() => {
+    return [...enrichedAssets].filter((asset) => asset.signal === "Manter" || asset.signal === "Observar").sort((a, b) => b.score - a.score).slice(0, 3);
+  }, [enrichedAssets]);
 
   function toggleSelectedFavorite() {
     setFavoriteTickers((current) => {
@@ -1084,7 +1199,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#070B16] text-slate-100">
+    <div className="min-h-screen bg-[#070B16] pb-16 text-slate-100">
       {toast && <Toast alert={toast} onClose={() => setToast(null)} onOpen={() => { setSelectedTicker(toast.ticker); setToast(null); }} />}
 
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
@@ -1134,6 +1249,12 @@ function App() {
           <RadarSummaryCard icon="spark" label="Melhor estudo" title={radarSummary.best?.ticker || "--"} detail={`${radarSummary.best?.signal || "Sem sinal"} com score ${radarSummary.best?.score ?? "--"}/100 para perfil ${profile}.`} color="emerald" />
           <RadarSummaryCard icon="alert" label="Maior atenção" title={radarSummary.riskiest?.ticker || "--"} detail={`${radarSummary.riskiest?.risk || "Risco não calculado"} e RSI ${radarSummary.riskiest?.rsi?.toFixed ? radarSummary.riskiest.rsi.toFixed(1) : "--"}.`} color="red" />
           <RadarSummaryCard icon="star" label="Favoritos" title={`${favoriteTickers.length} ativos`} detail={favoriteTickers.length ? favoriteTickers.join(", ") : "Nenhum favorito marcado ainda."} color="amber" />
+        </section>
+
+        <section className="mt-6 grid gap-4 lg:grid-cols-3">
+          <TradeIdeaCard icon="check" title="Estudar compra" assets={buyCandidates} emptyText="Sem compra clara no radar agora." color="emerald" onAsk={handleChatPrompt} />
+          <TradeIdeaCard icon="shield" title="Reduzir ou vender" assets={sellCandidates} emptyText="Nenhum ativo exigindo venda imediata pelo score." color="red" onAsk={handleChatPrompt} />
+          <TradeIdeaCard icon="eye" title="Só observar" assets={watchCandidates} emptyText="Nada neutro no filtro atual." color="cyan" onAsk={handleChatPrompt} />
         </section>
 
         <section className="mt-8">
@@ -1215,6 +1336,7 @@ function App() {
           <InfoBox icon="alert" title="Aviso importante" text="Os alertas são apoio à decisão e não recomendação financeira personalizada." color="amber" />
         </section>
       </main>
+      <BloombergTicker />
     </div>
   );
 }
