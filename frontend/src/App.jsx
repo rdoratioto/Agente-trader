@@ -32,6 +32,51 @@ const FALLBACK_NEWS = [
   },
 ];
 
+const KNOWN_TICKER_HINTS = {
+  BBAS3: {
+    name: "Banco do Brasil",
+    sector: "banco estatal / financeiro",
+    angle: "tende a responder a juros, crédito, inadimplência e resultado recorrente",
+    whatToCheck: "lucro, inadimplência, margem financeira, guidance e payout",
+    style: "mais para perfil moderado do que agressivo",
+  },
+  ITUB4: {
+    name: "Itaú",
+    sector: "banco privado",
+    angle: "costuma ser visto como nome de qualidade dentro de bancos",
+    whatToCheck: "lucro recorrente, inadimplência e eficiência operacional",
+    style: "perfil moderado",
+  },
+  BBDC4: {
+    name: "Bradesco",
+    sector: "banco privado",
+    angle: "normalmente exige atenção maior a eficiência e qualidade de carteira",
+    whatToCheck: "inadimplência, resultado e reprecificação de crédito",
+    style: "moderado com mais atenção ao risco",
+  },
+  PETR4: {
+    name: "Petrobras",
+    sector: "óleo e energia",
+    angle: "sensível a petróleo, política de dividendos e interferência estatal",
+    whatToCheck: "preço do petróleo, endividamento e política de proventos",
+    style: "volátil, mais tático",
+  },
+  VALE3: {
+    name: "Vale",
+    sector: "mineração",
+    angle: "depende muito de minério de ferro e China",
+    whatToCheck: "preço do minério, produção e demanda da China",
+    style: "cíclico",
+  },
+  WEGE3: {
+    name: "WEG",
+    sector: "industrial / exportação",
+    angle: "empresa de qualidade, mas com valuation que costuma exigir disciplina",
+    whatToCheck: "crescimento, margem e valuation",
+    style: "qualidade / longo prazo",
+  },
+};
+
 const ICONS = {
   bell: "🔔",
   brain: "🧠",
@@ -663,6 +708,25 @@ function buildHumanizedAnswer({ opening, take, evidence, action, caveat }) {
   ].filter(Boolean).join("\n");
 }
 
+function buildTickerHintAnswer(ticker, profile) {
+  const hint = KNOWN_TICKER_HINTS[ticker];
+  if (!hint) return null;
+
+  return buildHumanizedAnswer({
+    opening: `Sobre ${ticker}, eu iria por partes para não inventar informação.`,
+    take: `${hint.name} é um nome do setor ${hint.sector} e ${hint.style}.`,
+    evidence: `${hint.angle}. O ponto que mais importa olhar agora é ${hint.whatToCheck}.`,
+    action: `Se você quiser, eu posso transformar ${ticker} em um plano de estudo com leitura técnica e semáforo.`,
+    caveat: `sem o ativo carregado na watchlist eu não vou chutar preço ou score. Para um perfil ${profile.toLowerCase()}, eu trato isso como radar de estudo.`,
+  });
+}
+
+function extractTickerFromMessage(message) {
+  const normalized = String(message || "").toUpperCase();
+  const matches = normalized.match(/\b[A-Z]{4}\d{1,2}\b/g) || [];
+  return matches[0] || null;
+}
+
 function buildInvestmentAnswer(message, assets, profile) {
   const text = normalizeText(message);
   const safeAssets = assets.map(enrichAsset);
@@ -670,6 +734,7 @@ function buildInvestmentAnswer(message, assets, profile) {
   const best = ranked.filter((asset) => asset.signal !== "Vender").slice(0, 3);
   const weak = [...safeAssets].sort((a, b) => a.score - b.score).slice(0, 2);
   const strong = best[0];
+  const tickerFromMessage = extractTickerFromMessage(message);
 
   if (text.includes("plano") || text.includes("entrada") || text.includes("stop") || text.includes("alvo")) {
     return {
@@ -680,6 +745,27 @@ function buildInvestmentAnswer(message, assets, profile) {
         evidence: strong ? describeAssetShort(strong) : "o radar não encontrou assimetria clara.",
         action: buildActionPlan(strong),
         caveat: "se o preço abrir muito longe da entrada ou bater perto da resistência, eu esperaria nova confirmação.",
+      }),
+    };
+  }
+
+  if (tickerFromMessage) {
+    const knownAsset = safeAssets.find((asset) => asset.ticker === tickerFromMessage);
+    if (knownAsset) {
+      return { focusTicker: knownAsset.ticker, text: explainAssetForChat(knownAsset) };
+    }
+
+    const tickerHint = buildTickerHintAnswer(tickerFromMessage, profile);
+    if (tickerHint) {
+      return { focusTicker: tickerFromMessage, text: tickerHint };
+    }
+
+    return {
+      text: buildHumanizedAnswer({
+        opening: `Você citou ${tickerFromMessage}, mas eu não tenho esse ativo carregado agora.`,
+        take: "não quero te responder com chute.",
+        evidence: "sem dados carregados eu prefiro não inventar preço, score ou sinal.",
+        action: "se você quiser, eu posso adicionar esse ticker à watchlist ou te responder com um resumo genérico do setor.",
       }),
     };
   }
