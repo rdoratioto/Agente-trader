@@ -427,6 +427,55 @@ function defineIndicatorSignal(asset) {
   return "Neutro";
 }
 
+function defineDecisionLight({ signal, score, rsi, trend, macdHistogram, price, support, resistance }) {
+  const nearResistance = resistance && price ? (resistance - price) / price <= 0.012 && resistance >= price : false;
+  const nearSupport = support && price ? (price - support) / price <= 0.015 && price >= support : false;
+  const lostSupport = support && price ? price < support : false;
+
+  if (lostSupport || signal === "Vender" || score <= 35) {
+    return {
+      action: "Sair no stop",
+      state: "stop",
+      color: "red",
+      reason: "Tese técnica enfraquecida ou suporte perdido. Prioridade é proteger capital.",
+    };
+  }
+
+  if (score <= 48 || trend === "Baixa" || macdHistogram < 0) {
+    return {
+      action: "Reduzir posição",
+      state: "reduce",
+      color: "orange",
+      reason: "Momentum fraco. Vale diminuir exposição ou evitar nova entrada.",
+    };
+  }
+
+  if (nearResistance || rsi >= 76) {
+    return {
+      action: "Realizar parcial",
+      state: "trim",
+      color: "amber",
+      reason: "Preço esticado ou perto da resistência. Melhor proteger parte do ganho.",
+    };
+  }
+
+  if ((signal === "Comprar" || signal === "Comprar com cautela") && score >= 68 && trend !== "Baixa" && macdHistogram >= 0) {
+    return {
+      action: nearSupport ? "Comprar com risco controlado" : "Comprar",
+      state: "buy",
+      color: "green",
+      reason: nearSupport ? "Sinal positivo e preço próximo ao suporte favorecem risco/retorno." : "Score, tendência e momentum favorecem estudo de compra.",
+    };
+  }
+
+  return {
+    action: "Aguardar",
+    state: "wait",
+    color: "blue",
+    reason: "Sem confirmação suficiente. Melhor esperar preço, volume ou tendência alinharem.",
+  };
+}
+
 function buildChartData(closes) {
   const values = Array.isArray(closes) ? closes : [];
   const labels = ["D-9", "D-8", "D-7", "D-6", "D-5", "D-4", "D-3", "D-2", "D-1", "Hoje"];
@@ -459,6 +508,7 @@ function enrichAsset(rawAsset = {}) {
   const trend = defineTrend({ price, sma9, sma21, sma200 });
   const averageVolume = fallback.volume || volume || 1;
   const relativeVolume = Number(volume || 0) / Number(averageVolume || 1);
+  const decision = defineDecisionLight({ signal, score: technical.score, rsi, trend, macdHistogram: macdData.histogram, price, support, resistance });
   const stop = support ? support * 0.992 : price * 0.97;
   const target = resistance && resistance > price ? resistance : price * 1.06;
   const entry = signal === "Comprar" ? price * 1.002 : resistance ? resistance * 1.003 : price * 1.01;
@@ -503,6 +553,7 @@ function enrichAsset(rawAsset = {}) {
     bollingerLower: Number(rawAsset.bollingerLower ?? bollinger.lower),
     relativeVolume: Number(rawAsset.relativeVolume ?? relativeVolume),
     trend: rawAsset.trend || trend,
+    decision: rawAsset.decision || decision,
     support: Number(rawAsset.support ?? support),
     resistance: Number(rawAsset.resistance ?? resistance),
     entry: rawAsset.entry || formatCurrencyBRL(entry),
@@ -584,12 +635,12 @@ function rankAssetsForConversation(assets, profile = "Todos") {
 }
 
 function describeAssetShort(asset) {
-  return `${asset.ticker} está com score ${asset.score}/100, sinal ${asset.signal}, tendência ${asset.trend}, MACD ${asset.macdHistogram >= 0 ? "positivo" : "negativo"}, RSI ${asset.rsi.toFixed(1)} e risco ${asset.risk}`;
+  return `${asset.ticker} está com score ${asset.score}/100, semáforo ${asset.decision.action}, sinal ${asset.signal}, tendência ${asset.trend}, MACD ${asset.macdHistogram >= 0 ? "positivo" : "negativo"}, RSI ${asset.rsi.toFixed(1)} e risco ${asset.risk}`;
 }
 
 function buildActionPlan(asset) {
   if (!asset) return "Ainda não tenho um ativo com vantagem suficiente para montar plano.";
-  return `Meu plano de estudo para ${asset.ticker}: observar entrada em ${asset.entry}, usar stop em ${asset.stop} e alvo em ${asset.target}. A tese só continua válida se o preço respeitar suporte, o volume não secar e o RSI não ficar ainda mais esticado. Se perder suporte, eu deixaria de pensar em compra e passaria para proteção.`;
+  return `Meu plano de estudo para ${asset.ticker}: semáforo em "${asset.decision.action}", observar entrada em ${asset.entry}, usar stop em ${asset.stop} e alvo em ${asset.target}. A tese só continua válida se o preço respeitar suporte, o volume não secar e o RSI não ficar ainda mais esticado. Se perder suporte, eu deixaria de pensar em compra e passaria para proteção.`;
 }
 
 function buildHumanizedAnswer({ opening, take, evidence, action, caveat }) {
@@ -754,7 +805,7 @@ function explainAssetForChat(asset) {
   return buildHumanizedAnswer({
     opening: `Vamos olhar ${safeAsset.ticker} com objetividade.`,
     take: `${safeAsset.signal} no radar, com risco ${safeAsset.risk}.`,
-    evidence: `Preço ${formatCurrencyBRL(safeAsset.price)}, score ${safeAsset.score}/100, tendência ${safeAsset.trend}, MACD ${safeAsset.macdHistogram.toFixed(2)}, RSI ${safeAsset.rsi.toFixed(1)}, Bollinger entre ${formatCurrencyBRL(safeAsset.bollingerLower)} e ${formatCurrencyBRL(safeAsset.bollingerUpper)}, suporte ${formatCurrencyBRL(safeAsset.support)} e resistência ${formatCurrencyBRL(safeAsset.resistance)}. ${safeAsset.reason}`,
+    evidence: `Semáforo: ${safeAsset.decision.action}. Preço ${formatCurrencyBRL(safeAsset.price)}, score ${safeAsset.score}/100, tendência ${safeAsset.trend}, MACD ${safeAsset.macdHistogram.toFixed(2)}, RSI ${safeAsset.rsi.toFixed(1)}, Bollinger entre ${formatCurrencyBRL(safeAsset.bollingerLower)} e ${formatCurrencyBRL(safeAsset.bollingerUpper)}, suporte ${formatCurrencyBRL(safeAsset.support)} e resistência ${formatCurrencyBRL(safeAsset.resistance)}. ${safeAsset.reason}`,
     action: buildActionPlan(safeAsset),
     caveat: "se você já estiver posicionado, a decisão muda conforme seu preço médio e prazo.",
   });
@@ -812,6 +863,17 @@ function indicatorClass(signal) {
   if (signal === "bullish") return "border-emerald-300/20 bg-emerald-300/10 text-emerald-100";
   if (signal === "bearish") return "border-red-300/20 bg-red-300/10 text-red-100";
   return "border-amber-300/20 bg-amber-300/10 text-amber-100";
+}
+
+function decisionClass(color) {
+  const classes = {
+    green: "border-emerald-300/30 bg-emerald-300/15 text-emerald-100",
+    blue: "border-cyan-300/30 bg-cyan-300/15 text-cyan-100",
+    amber: "border-amber-300/30 bg-amber-300/15 text-amber-100",
+    orange: "border-orange-300/30 bg-orange-300/15 text-orange-100",
+    red: "border-red-300/30 bg-red-300/15 text-red-100",
+  };
+  return classes[color] || classes.blue;
 }
 
 function runLogicTests() {
@@ -1042,6 +1104,40 @@ function IndicatorBox({ label, value, helper, signal = "neutral" }) {
   );
 }
 
+function DecisionSemaphore({ decision }) {
+  const steps = [
+    { state: "buy", label: "Comprar", color: "bg-emerald-300" },
+    { state: "wait", label: "Aguardar", color: "bg-cyan-300" },
+    { state: "trim", label: "Realizar", color: "bg-amber-300" },
+    { state: "reduce", label: "Reduzir", color: "bg-orange-300" },
+    { state: "stop", label: "Stop", color: "bg-red-300" },
+  ];
+
+  return (
+    <div className={`rounded-3xl border p-5 ${decisionClass(decision.color)}`}>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-black uppercase tracking-wide opacity-70">Semáforo de decisão</p>
+          <h3 className="mt-2 text-2xl font-black">{decision.action}</h3>
+          <p className="mt-2 text-sm leading-6 opacity-80">{decision.reason}</p>
+        </div>
+        <Icon name="scale" size={26} />
+      </div>
+      <div className="mt-5 grid grid-cols-5 gap-2">
+        {steps.map((step) => {
+          const active = step.state === decision.state;
+          return (
+            <div key={step.state} className={`rounded-2xl border border-white/10 p-2 text-center ${active ? "bg-white/15" : "bg-black/20 opacity-55"}`}>
+              <div className={`mx-auto h-3 w-3 rounded-full ${step.color} ${active ? "shadow-[0_0_18px_currentColor]" : ""}`} />
+              <p className="mt-2 text-[10px] font-bold">{step.label}</p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function InfoBox({ icon, title, text, color = "cyan" }) {
   const colorClasses = {
     cyan: "border-cyan-300/20 bg-cyan-300/10 text-cyan-100",
@@ -1107,7 +1203,7 @@ function TradeIdeaCard({ icon, title, assets, emptyText, color = "cyan", onAsk }
                   <span className="font-black">{asset.ticker}</span>
                   <span className="text-xs font-bold opacity-75">Score {asset.score}/100</span>
                 </div>
-                <p className="mt-1 text-xs leading-5 opacity-75">{asset.signal} · {asset.risk} · entrada {asset.entry}</p>
+                <p className="mt-1 text-xs leading-5 opacity-75">{asset.decision.action} · {asset.risk} · entrada {asset.entry}</p>
               </button>
             ))}
           </div>
@@ -1515,6 +1611,10 @@ function App() {
               </div>
 
               <div className="mt-6 h-56 rounded-3xl border border-white/10 bg-black/20 p-4"><MiniChart data={safeSelectedAsset.data} positive={safeSelectedAsset.change >= 0} /></div>
+
+              <div className="mt-6">
+                <DecisionSemaphore decision={safeSelectedAsset.decision} />
+              </div>
 
               <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <MetricCard icon="chart" label="SMA 9" value={formatCurrencyBRL(safeSelectedAsset.sma9)} />
