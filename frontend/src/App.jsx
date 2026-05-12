@@ -482,6 +482,26 @@ function rankAssetsForConversation(assets, profile = "Todos") {
     .sort((a, b) => b.conversationalScore - a.conversationalScore);
 }
 
+function describeAssetShort(asset) {
+  return `${asset.ticker} está com score ${asset.score}/100, sinal ${asset.signal}, RSI ${asset.rsi.toFixed(1)} e risco ${asset.risk}`;
+}
+
+function buildActionPlan(asset) {
+  if (!asset) return "Ainda não tenho um ativo com vantagem suficiente para montar plano.";
+  return `Meu plano de estudo para ${asset.ticker}: observar entrada em ${asset.entry}, usar stop em ${asset.stop} e alvo em ${asset.target}. A tese só continua válida se o preço respeitar suporte, o volume não secar e o RSI não ficar ainda mais esticado. Se perder suporte, eu deixaria de pensar em compra e passaria para proteção.`;
+}
+
+function buildHumanizedAnswer({ opening, take, evidence, action, caveat }) {
+  return [
+    opening,
+    "",
+    `Leitura direta: ${take}`,
+    `Por quê: ${evidence}`,
+    `Ação prática: ${action}`,
+    `Cuidado: ${caveat || "isso é um radar de estudo, não uma ordem. Tamanho de posição e stop vêm antes de qualquer convicção."}`,
+  ].filter(Boolean).join("\n");
+}
+
 function buildInvestmentAnswer(message, assets, profile) {
   const text = normalizeText(message);
   const safeAssets = assets.map(enrichAsset);
@@ -493,7 +513,13 @@ function buildInvestmentAnswer(message, assets, profile) {
   if (text.includes("plano") || text.includes("entrada") || text.includes("stop") || text.includes("alvo")) {
     return {
       focusTicker: strong?.ticker,
-      text: `Plano de estudo do radar: começar por ${strong?.ticker || "nenhum ativo"}. Entrada: ${strong?.entry || "--"}. Stop: ${strong?.stop || "--"}. Alvo: ${strong?.target || "--"}. Critério: só faz sentido estudar compra se o preço respeitar o suporte, o RSI não estiver esticado demais e o tamanho da posição couber no seu risco. Se perder suporte, a tese muda para proteção.`,
+      text: buildHumanizedAnswer({
+        opening: "Boa. Vou pensar como se a gente estivesse montando uma operação no papel, com critério e sem impulso.",
+        take: strong ? `eu começaria estudando ${strong.ticker}, mas sem entrar no automático.` : "não apareceu um ativo forte o suficiente para virar plano agora.",
+        evidence: strong ? describeAssetShort(strong) : "o radar não encontrou assimetria clara.",
+        action: buildActionPlan(strong),
+        caveat: "se o preço abrir muito longe da entrada ou bater perto da resistência, eu esperaria nova confirmação.",
+      }),
     };
   }
 
@@ -501,7 +527,13 @@ function buildInvestmentAnswer(message, assets, profile) {
     const comparison = ranked.slice(0, 4).map((asset) => `${asset.ticker}: score ${asset.score}/100, sinal ${asset.signal}, risco ${asset.risk}`).join("; ");
     return {
       focusTicker: ranked[0]?.ticker,
-      text: `Comparação rápida do radar: ${comparison}. Para estudar primeiro, eu escolheria ${ranked[0]?.ticker || "nenhum ativo"} porque combina melhor score, sinal e encaixe de perfil. Para reduzir risco, eu deixaria ${weak[0]?.ticker || "o ativo mais fraco"} em observação antes de aumentar exposição.`,
+      text: buildHumanizedAnswer({
+        opening: "Vamos comparar com calma. Eu olho primeiro força técnica, risco e se o ativo combina com seu perfil.",
+        take: `${ranked[0]?.ticker || "nenhum ativo"} aparece melhor no ranking agora.`,
+        evidence: comparison,
+        action: `Eu estudaria ${ranked[0]?.ticker || "o primeiro do ranking"} antes dos outros e deixaria ${weak[0]?.ticker || "o mais fraco"} em observação defensiva.`,
+        caveat: "ranking não é certeza. Ele só mostra prioridade de estudo com os dados disponíveis.",
+      }),
     };
   }
 
@@ -509,7 +541,12 @@ function buildInvestmentAnswer(message, assets, profile) {
     const conservative = rankAssetsForConversation(safeAssets, "Conservador").slice(0, 2);
     const growth = rankAssetsForConversation(safeAssets, "Agressivo").filter((asset) => asset.signal !== "Vender").slice(0, 2);
     return {
-      text: `Para montar uma carteira de estudo, eu separaria em blocos: base defensiva com ${conservative.map((asset) => asset.ticker).join(", ") || "--"} e bloco de oportunidade com ${growth.map((asset) => asset.ticker).join(", ") || "--"}. Eu evitaria concentrar tudo no ativo de maior score; o radar ajuda a priorizar, mas gestão de posição vem antes da convicção.`,
+      text: buildHumanizedAnswer({
+        opening: "Para carteira, eu não olharia só 'qual sobe mais'. Eu separaria defesa, oportunidade e controle de risco.",
+        take: `base defensiva com ${conservative.map((asset) => asset.ticker).join(", ") || "--"} e bloco de oportunidade com ${growth.map((asset) => asset.ticker).join(", ") || "--"}.`,
+        evidence: "os ativos defensivos tendem a ter risco menor no radar, enquanto o bloco agressivo busca score e momentum.",
+        action: "eu evitaria concentrar tudo no ativo de maior score. Melhor montar uma lista curta, definir limite por ativo e só aumentar posição depois de confirmação.",
+      }),
     };
   }
 
@@ -523,7 +560,12 @@ function buildInvestmentAnswer(message, assets, profile) {
     const conservative = rankAssetsForConversation(safeAssets, "Conservador").filter((asset) => !asset.risk.includes("Muito")).slice(0, 3);
     return {
       profileSuggestion: "Conservador",
-      text: `Entendi, mano. Para um perfil conservador, eu evitaria ativos de risco muito alto e olharia primeiro para ${conservative.map((asset) => asset.ticker).join(", ")}. Hoje, o melhor encaixe parece ${conservative[0]?.ticker || "nenhum ativo"}, porque tem risco ${conservative[0]?.risk || "menor"}, score ${conservative[0]?.score || "--"}/100 e sinal ${conservative[0]?.signal || "neutro"}. Mesmo assim, eu não entraria sem validar prazo, reserva de emergência e tamanho da posição.`,
+      text: buildHumanizedAnswer({
+        opening: "Entendi seu perfil. Sendo conservador, eu prefiro preservar capital antes de caçar oportunidade.",
+        take: `eu olharia primeiro para ${conservative.map((asset) => asset.ticker).join(", ") || "nenhum ativo agora"}.`,
+        evidence: `${conservative[0]?.ticker || "o melhor encaixe"} tem risco ${conservative[0]?.risk || "menor"}, score ${conservative[0]?.score || "--"}/100 e sinal ${conservative[0]?.signal || "neutro"}.`,
+        action: "eu só estudaria entrada com posição pequena, stop definido e sem mexer em reserva de emergência.",
+      }),
     };
   }
 
@@ -531,7 +573,13 @@ function buildInvestmentAnswer(message, assets, profile) {
     const aggressive = rankAssetsForConversation(safeAssets, "Agressivo").slice(0, 3);
     return {
       profileSuggestion: "Agressivo",
-      text: `Fechado. Para perfil agressivo, o radar está puxando mais para ${aggressive.map((asset) => asset.ticker).join(", ")}. O destaque é ${aggressive[0]?.ticker || "nenhum ativo"}, com score ${aggressive[0]?.score || "--"}/100 e sinal ${aggressive[0]?.signal || "neutro"}. Eu trataria como operação com stop obrigatório, porque risco alto pode virar prejuízo rápido.`,
+      text: buildHumanizedAnswer({
+        opening: "Perfil agressivo aceita mais oscilação, mas não aceita operar sem plano.",
+        take: `o radar puxa mais para ${aggressive.map((asset) => asset.ticker).join(", ") || "nenhum ativo agora"}.`,
+        evidence: `${aggressive[0]?.ticker || "o destaque"} tem score ${aggressive[0]?.score || "--"}/100 e sinal ${aggressive[0]?.signal || "neutro"}.`,
+        action: "eu trataria como operação tática: entrada planejada, stop obrigatório e realização parcial se chegar perto do alvo.",
+        caveat: "quanto mais agressivo o ativo, menor deveria ser a posição inicial.",
+      }),
     };
   }
 
@@ -539,13 +587,25 @@ function buildInvestmentAnswer(message, assets, profile) {
     const moderate = rankAssetsForConversation(safeAssets, "Moderado").slice(0, 3);
     return {
       profileSuggestion: "Moderado",
-      text: `Boa. Para perfil moderado, eu buscaria equilíbrio entre tendência e risco. No radar agora: ${moderate.map((asset) => `${asset.ticker} (${asset.score}/100)`).join(", ")}. O mais interessante parece ${moderate[0]?.ticker || "nenhum ativo"}, mas eu esperaria confirmação se estiver perto de resistência.`,
+      text: buildHumanizedAnswer({
+        opening: "Para perfil moderado, o jogo é equilíbrio: não travar por medo, mas também não comprar qualquer sinal.",
+        take: `no radar agora aparecem ${moderate.map((asset) => `${asset.ticker} (${asset.score}/100)`).join(", ") || "poucos nomes bons"}.`,
+        evidence: `${moderate[0]?.ticker || "o melhor nome"} combina melhor score e risco dentro desse perfil.`,
+        action: "eu estudaria uma entrada gradual e só reforçaria se o ativo confirmar força depois.",
+      }),
     };
   }
 
   if (text.includes("vender") || text.includes("sair") || text.includes("realizar")) {
     return {
-      text: `Olhando o radar, os ativos que exigem mais cuidado são ${weak.map((asset) => `${asset.ticker} com score ${asset.score}/100 e sinal ${asset.signal}`).join("; ")}. Eu não venderia no automático, mas revisaria stop, suporte e exposição. Se perdeu suporte ou o score continuar caindo, a prioridade vira proteger capital.`,
+      focusTicker: weak[0]?.ticker,
+      text: buildHumanizedAnswer({
+        opening: "Para vender, eu separo duas coisas: realizar lucro e cortar risco. São decisões diferentes.",
+        take: `os ativos que mais pedem atenção são ${weak.map((asset) => `${asset.ticker} com score ${asset.score}/100 e sinal ${asset.signal}`).join("; ")}.`,
+        evidence: "score baixo, perda de suporte ou RSI ruim indicam que a tese enfraqueceu.",
+        action: `eu revisaria stop e exposição em ${weak[0]?.ticker || "quem estiver mais fraco"}. Se já perdeu suporte, proteger capital vira prioridade.`,
+        caveat: "eu não venderia no automático sem olhar seu preço de entrada e objetivo da posição.",
+      }),
     };
   }
 
@@ -556,25 +616,47 @@ function buildInvestmentAnswer(message, assets, profile) {
       return bRisk - aRisk || a.score - b.score;
     }).slice(0, 3);
     return {
-      text: `Os pontos mais perigosos agora são ${risky.map((asset) => `${asset.ticker} (${asset.risk}, score ${asset.score}/100)`).join(", ")}. Eu teria mais cautela principalmente quando RSI está alto, preço está perto da resistência ou o ativo já subiu muito no curto prazo.`,
+      focusTicker: risky[0]?.ticker,
+      text: buildHumanizedAnswer({
+        opening: "Aqui eu vou ser mais defensivo, porque risco mal lido costuma custar caro.",
+        take: `os pontos mais perigosos agora são ${risky.map((asset) => `${asset.ticker} (${asset.risk}, score ${asset.score}/100)`).join(", ")}.`,
+        evidence: "RSI alto, preço perto de resistência e variação forte aumentam chance de entrada ruim.",
+        action: "eu reduziria pressa, esperaria recuo ou confirmação e usaria stop mais disciplinado.",
+      }),
     };
   }
 
   if (text.includes("onde") || text.includes("investir") || text.includes("comprar") || text.includes("melhor") || text.includes("oportunidade")) {
     return {
       focusTicker: strong?.ticker,
-      text: `Mano, olhando apenas este radar técnico, meu top 3 agora seria: ${best.map((asset, index) => `${index + 1}) ${asset.ticker} — score ${asset.score}/100, sinal ${asset.signal}, risco ${asset.risk}`).join("; ")}. Se fosse para escolher um para estudar primeiro, eu olharia ${strong?.ticker || "nenhum ativo"}. Entrada sugerida: ${strong?.entry || "--"}, stop: ${strong?.stop || "--"}, alvo: ${strong?.target || "--"}. Isso não é ordem de compra; é um radar para você decidir com gestão de risco.`,
+      text: buildHumanizedAnswer({
+        opening: "Olhando só o radar técnico de agora, eu consigo priorizar o que vale estudar primeiro.",
+        take: `meu top 3 seria ${best.map((asset, index) => `${index + 1}. ${asset.ticker} (${asset.score}/100, ${asset.signal}, risco ${asset.risk})`).join("; ")}.`,
+        evidence: strong ? describeAssetShort(strong) : "não apareceu ativo forte o bastante.",
+        action: strong ? buildActionPlan(strong) : "eu esperaria novo sinal antes de comprar.",
+      }),
     };
   }
 
   return {
-    text: `Tô contigo, mano. Posso te responder como um copiloto de investimentos. Pelos dados atuais, o ativo mais interessante para estudar é ${strong?.ticker || "nenhum"}, com score ${strong?.score || "--"}/100, sinal ${strong?.signal || "neutro"} e risco ${strong?.risk || "--"}. Você pode me perguntar: “onde investir?”, “o que vender?”, “sou conservador”, “qual ativo está mais arriscado?” ou “explique ${strong?.ticker || "um ativo"}”.`,
+    text: buildHumanizedAnswer({
+      opening: "Estou contigo. Me fala se você quer comprar, vender, comparar ou montar carteira que eu respondo em cima do radar.",
+      take: `o ativo mais interessante para estudar agora é ${strong?.ticker || "nenhum"}.`,
+      evidence: strong ? describeAssetShort(strong) : "os sinais estão fracos ou inconclusivos.",
+      action: `você pode perguntar: "onde investir?", "o que vender?", "monte um plano", "compare os ativos" ou "explique ${strong?.ticker || "um ativo"}".`,
+    }),
   };
 }
 
 function explainAssetForChat(asset) {
   const safeAsset = enrichAsset(asset);
-  return `${safeAsset.ticker}: preço ${formatCurrencyBRL(safeAsset.price)}, score ${safeAsset.score}/100, RSI ${safeAsset.rsi.toFixed(1)}, sinal ${safeAsset.signal}, risco ${safeAsset.risk}. Entrada de estudo: ${safeAsset.entry}, stop: ${safeAsset.stop}, alvo: ${safeAsset.target}. ${safeAsset.reason}`;
+  return buildHumanizedAnswer({
+    opening: `Vamos olhar ${safeAsset.ticker} com objetividade.`,
+    take: `${safeAsset.signal} no radar, com risco ${safeAsset.risk}.`,
+    evidence: `Preço ${formatCurrencyBRL(safeAsset.price)}, score ${safeAsset.score}/100, RSI ${safeAsset.rsi.toFixed(1)}, suporte ${formatCurrencyBRL(safeAsset.support)} e resistência ${formatCurrencyBRL(safeAsset.resistance)}. ${safeAsset.reason}`,
+    action: buildActionPlan(safeAsset),
+    caveat: "se você já estiver posicionado, a decisão muda conforme seu preço médio e prazo.",
+  });
 }
 
 async function fetchMarketData(symbols) {
