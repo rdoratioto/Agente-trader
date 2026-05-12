@@ -213,6 +213,41 @@ function calculateSMA(values, period) {
   return average(values.slice(-period));
 }
 
+function calculateEMA(values, period) {
+  const numbers = Array.isArray(values) ? values.map(Number).filter(Number.isFinite) : [];
+  if (!numbers.length) return 0;
+  const multiplier = 2 / (period + 1);
+  return numbers.reduce((ema, value, index) => (index === 0 ? value : value * multiplier + ema * (1 - multiplier)), numbers[0]);
+}
+
+function calculateMACD(values) {
+  const numbers = Array.isArray(values) ? values.map(Number).filter(Number.isFinite) : [];
+  const ema12 = calculateEMA(numbers, 12);
+  const ema26 = calculateEMA(numbers, 26);
+  const macd = ema12 - ema26;
+  const macdSeries = numbers.map((_, index) => {
+    const slice = numbers.slice(0, index + 1);
+    return calculateEMA(slice, 12) - calculateEMA(slice, 26);
+  });
+  const signal = calculateEMA(macdSeries, 9);
+  return { macd, signal, histogram: macd - signal };
+}
+
+function calculateStandardDeviation(values) {
+  const numbers = Array.isArray(values) ? values.map(Number).filter(Number.isFinite) : [];
+  if (!numbers.length) return 0;
+  const mean = average(numbers);
+  const variance = average(numbers.map((value) => (value - mean) ** 2));
+  return Math.sqrt(variance);
+}
+
+function calculateBollingerBands(values, period = 20) {
+  const recent = Array.isArray(values) ? values.slice(-period).map(Number).filter(Number.isFinite) : [];
+  const middle = average(recent);
+  const deviation = calculateStandardDeviation(recent);
+  return { upper: middle + deviation * 2, middle, lower: middle - deviation * 2 };
+}
+
 function calculateRSI(values, period = 14) {
   if (!Array.isArray(values) || values.length < period + 1) return 50;
   const recent = values.slice(-(period + 1));
@@ -340,6 +375,25 @@ function defineRiskAndProfile({ category, change, rsi, score }) {
   return { profile: "Moderado", risk: "Médio" };
 }
 
+function defineTrend({ price, sma9, sma21, sma200 }) {
+  if (price > sma9 && sma9 > sma21 && sma21 >= sma200 * 0.98) return "Alta";
+  if (price < sma9 && sma9 < sma21) return "Baixa";
+  return "Lateral";
+}
+
+function defineIndicatorSignal(asset) {
+  const positives = [
+    asset.trend === "Alta",
+    asset.macdHistogram > 0,
+    asset.price > asset.bollingerMiddle,
+    asset.relativeVolume >= 1,
+  ].filter(Boolean).length;
+
+  if (positives >= 3 && asset.rsi < 72) return "Confirma compra";
+  if (asset.trend === "Baixa" || asset.macdHistogram < 0 || asset.price < asset.bollingerLower) return "Defensivo";
+  return "Neutro";
+}
+
 function buildChartData(closes) {
   const values = Array.isArray(closes) ? closes : [];
   const labels = ["D-9", "D-8", "D-7", "D-6", "D-5", "D-4", "D-3", "D-2", "D-1", "Hoje"];
@@ -363,10 +417,15 @@ function enrichAsset(rawAsset = {}) {
   const sma21 = calculateSMA(closes, 21);
   const sma200 = calculateSMA(closes, Math.min(200, closes.length));
   const rsi = calculateRSI(closes, 14);
+  const macdData = calculateMACD(closes);
+  const bollinger = calculateBollingerBands(closes, 20);
   const { support, resistance } = calculateSupportResistance(closes);
   const technical = calculateTechnicalScore({ price, change, volume, sma9, sma21, sma200, rsi, support, resistance });
   const signal = rawAsset.signal || defineSignal(technical.score, rsi, price, resistance, support);
   const riskData = defineRiskAndProfile({ category, change, rsi, score: technical.score });
+  const trend = defineTrend({ price, sma9, sma21, sma200 });
+  const averageVolume = fallback.volume || volume || 1;
+  const relativeVolume = Number(volume || 0) / Number(averageVolume || 1);
   const stop = support ? support * 0.992 : price * 0.97;
   const target = resistance && resistance > price ? resistance : price * 1.06;
   const entry = signal === "Comprar" ? price * 1.002 : resistance ? resistance * 1.003 : price * 1.01;
@@ -403,6 +462,14 @@ function enrichAsset(rawAsset = {}) {
     sma9: Number(rawAsset.sma9 ?? sma9),
     sma21: Number(rawAsset.sma21 ?? sma21),
     sma200: Number(rawAsset.sma200 ?? sma200),
+    macd: Number(rawAsset.macd ?? macdData.macd),
+    macdSignal: Number(rawAsset.macdSignal ?? macdData.signal),
+    macdHistogram: Number(rawAsset.macdHistogram ?? macdData.histogram),
+    bollingerUpper: Number(rawAsset.bollingerUpper ?? bollinger.upper),
+    bollingerMiddle: Number(rawAsset.bollingerMiddle ?? bollinger.middle),
+    bollingerLower: Number(rawAsset.bollingerLower ?? bollinger.lower),
+    relativeVolume: Number(rawAsset.relativeVolume ?? relativeVolume),
+    trend: rawAsset.trend || trend,
     support: Number(rawAsset.support ?? support),
     resistance: Number(rawAsset.resistance ?? resistance),
     entry: rawAsset.entry || formatCurrencyBRL(entry),
@@ -484,7 +551,7 @@ function rankAssetsForConversation(assets, profile = "Todos") {
 }
 
 function describeAssetShort(asset) {
-  return `${asset.ticker} está com score ${asset.score}/100, sinal ${asset.signal}, RSI ${asset.rsi.toFixed(1)} e risco ${asset.risk}`;
+  return `${asset.ticker} está com score ${asset.score}/100, sinal ${asset.signal}, tendência ${asset.trend}, MACD ${asset.macdHistogram >= 0 ? "positivo" : "negativo"}, RSI ${asset.rsi.toFixed(1)} e risco ${asset.risk}`;
 }
 
 function buildActionPlan(asset) {
@@ -654,7 +721,7 @@ function explainAssetForChat(asset) {
   return buildHumanizedAnswer({
     opening: `Vamos olhar ${safeAsset.ticker} com objetividade.`,
     take: `${safeAsset.signal} no radar, com risco ${safeAsset.risk}.`,
-    evidence: `Preço ${formatCurrencyBRL(safeAsset.price)}, score ${safeAsset.score}/100, RSI ${safeAsset.rsi.toFixed(1)}, suporte ${formatCurrencyBRL(safeAsset.support)} e resistência ${formatCurrencyBRL(safeAsset.resistance)}. ${safeAsset.reason}`,
+    evidence: `Preço ${formatCurrencyBRL(safeAsset.price)}, score ${safeAsset.score}/100, tendência ${safeAsset.trend}, MACD ${safeAsset.macdHistogram.toFixed(2)}, RSI ${safeAsset.rsi.toFixed(1)}, Bollinger entre ${formatCurrencyBRL(safeAsset.bollingerLower)} e ${formatCurrencyBRL(safeAsset.bollingerUpper)}, suporte ${formatCurrencyBRL(safeAsset.support)} e resistência ${formatCurrencyBRL(safeAsset.resistance)}. ${safeAsset.reason}`,
     action: buildActionPlan(safeAsset),
     caveat: "se você já estiver posicionado, a decisão muda conforme seu preço médio e prazo.",
   });
@@ -706,6 +773,12 @@ function riskClass(risk) {
   if (risk && (risk.includes("Muito") || risk === "Alto")) return "text-red-300";
   if (risk === "Médio") return "text-amber-300";
   return "text-emerald-300";
+}
+
+function indicatorClass(signal) {
+  if (signal === "bullish") return "border-emerald-300/20 bg-emerald-300/10 text-emerald-100";
+  if (signal === "bearish") return "border-red-300/20 bg-red-300/10 text-red-100";
+  return "border-amber-300/20 bg-amber-300/10 text-amber-100";
 }
 
 function runLogicTests() {
@@ -905,6 +978,16 @@ function SmallBox({ label, value, color = "text-white" }) {
     <div className="rounded-2xl bg-white/5 p-4">
       <p className="text-xs text-slate-400">{label}</p>
       <p className={`mt-1 font-bold ${color}`}>{value}</p>
+    </div>
+  );
+}
+
+function IndicatorBox({ label, value, helper, signal = "neutral" }) {
+  return (
+    <div className={`rounded-2xl border p-4 ${indicatorClass(signal)}`}>
+      <p className="text-xs font-bold uppercase opacity-65">{label}</p>
+      <p className="mt-2 text-lg font-black">{value}</p>
+      <p className="mt-1 text-xs leading-5 opacity-75">{helper}</p>
     </div>
   );
 }
@@ -1379,6 +1462,23 @@ function App() {
                 <MetricCard icon="chart" label="SMA 21" value={formatCurrencyBRL(safeSelectedAsset.sma21)} />
                 <MetricCard icon="support" label="Suporte" value={formatCurrencyBRL(safeSelectedAsset.support)} />
                 <MetricCard icon="resistance" label="Resistência" value={formatCurrencyBRL(safeSelectedAsset.resistance)} />
+              </div>
+
+              <div className="mt-6 rounded-3xl border border-white/10 bg-black/20 p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Icon name="scale" className="bg-cyan-300/10 text-cyan-300" />
+                    <h3 className="font-bold text-white">Indicadores avançados</h3>
+                  </div>
+                  <span className={`rounded-full border px-3 py-1 text-xs font-bold ${indicatorClass(defineIndicatorSignal(safeSelectedAsset) === "Confirma compra" ? "bullish" : defineIndicatorSignal(safeSelectedAsset) === "Defensivo" ? "bearish" : "neutral")}`}>{defineIndicatorSignal(safeSelectedAsset)}</span>
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <IndicatorBox label="Tendência" value={safeSelectedAsset.trend} helper={`Preço ${safeSelectedAsset.price > safeSelectedAsset.sma21 ? "acima" : "abaixo"} da média de 21.`} signal={safeSelectedAsset.trend === "Alta" ? "bullish" : safeSelectedAsset.trend === "Baixa" ? "bearish" : "neutral"} />
+                  <IndicatorBox label="MACD" value={safeSelectedAsset.macdHistogram.toFixed(2)} helper={safeSelectedAsset.macdHistogram >= 0 ? "Momentum favorece compradores." : "Momentum perdeu força."} signal={safeSelectedAsset.macdHistogram >= 0 ? "bullish" : "bearish"} />
+                  <IndicatorBox label="Bollinger" value={`${formatCurrencyBRL(safeSelectedAsset.bollingerLower)} - ${formatCurrencyBRL(safeSelectedAsset.bollingerUpper)}`} helper={safeSelectedAsset.price > safeSelectedAsset.bollingerUpper ? "Preço esticado acima da banda." : safeSelectedAsset.price < safeSelectedAsset.bollingerLower ? "Preço abaixo da banda inferior." : "Preço dentro da faixa normal."} signal={safeSelectedAsset.price > safeSelectedAsset.bollingerUpper ? "bearish" : safeSelectedAsset.price < safeSelectedAsset.bollingerLower ? "neutral" : "bullish"} />
+                  <IndicatorBox label="Volume relativo" value={`${safeSelectedAsset.relativeVolume.toFixed(2)}x`} helper={safeSelectedAsset.relativeVolume >= 1 ? "Volume confirma liquidez." : "Volume abaixo da referência."} signal={safeSelectedAsset.relativeVolume >= 1 ? "bullish" : "neutral"} />
+                </div>
               </div>
 
               <div className="mt-6 grid grid-cols-3 gap-3">
