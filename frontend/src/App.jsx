@@ -1138,6 +1138,45 @@ function DecisionSemaphore({ decision }) {
   );
 }
 
+function AlertCenter({ alerts, selectedAssetAlerts, onMarkRead, onSelectTicker }) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/[0.07] p-6 shadow-2xl shadow-black/20">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <Icon name="bell" className="bg-amber-300/10 text-amber-300" />
+          <h2 className="text-xl font-bold text-white">Central de alertas</h2>
+        </div>
+        <button onClick={onMarkRead} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300 hover:bg-white/10">Marcar lidos</button>
+      </div>
+      <div className="mt-4 flex items-center justify-between rounded-2xl border border-white/10 bg-black/20 p-3 text-sm">
+        <div className="flex items-center gap-2 text-slate-300">
+          <Icon name="eye" />
+          <span>Alertas deste ativo</span>
+        </div>
+        <span className="font-bold text-white">{selectedAssetAlerts.length}</span>
+      </div>
+      <div className="mt-5 max-h-[360px] space-y-3 overflow-auto pr-1">
+        {alerts.length === 0 && <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-slate-400">Nenhum alerta ativo no momento.</div>}
+        {alerts.map((alert) => (
+          <button key={alert.id} onClick={() => onSelectTicker(alert.ticker)} className={`w-full rounded-2xl border p-4 text-left transition hover:scale-[1.01] ${alertClass(alert.severity)} ${alert.read ? "opacity-55" : "opacity-100"}`}>
+            <div className="flex items-start gap-3">
+              <div className="mt-1"><AlertIcon type={alert.type} severity={alert.severity} /></div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-bold">{alert.title}</h3>
+                  <span className="text-xs opacity-60">{alert.time}</span>
+                  {!alert.read && <span className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-bold">NOVO</span>}
+                </div>
+                <p className="mt-1 text-sm leading-5 opacity-80">{alert.text}</p>
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function InfoBox({ icon, title, text, color = "cyan" }) {
   const colorClasses = {
     cyan: "border-cyan-300/20 bg-cyan-300/10 text-cyan-100",
@@ -1587,10 +1626,14 @@ function App() {
         {error && <section className="mt-4 rounded-3xl border border-red-300/20 bg-red-300/10 p-4 text-sm text-red-100"><div className="flex items-start gap-3"><Icon name="alert" /><p>{error}. O painel voltou para dados simulados para não quebrar a experiência.</p></div></section>}
 
         <section className="mt-8 grid gap-6 lg:grid-cols-[1.2fr_0.9fr]">
-          <div>
+          <div className="space-y-6">
+            <AlertCenter alerts={alerts} selectedAssetAlerts={selectedAssetAlerts} onMarkRead={markAlertsAsRead} onSelectTicker={setSelectedTicker} />
+
+            <div>
             <div className="mb-4 flex items-center justify-between"><h2 className="text-2xl font-bold text-white">Watchlist</h2><p className="text-sm text-slate-400">{filteredAssets.length} ativos encontrados</p></div>
             {filteredAssets.length === 0 && <div className="rounded-3xl border border-white/10 bg-white/[0.06] p-6 text-sm text-slate-300">Nenhum ativo encontrado com os filtros atuais.</div>}
             <div className="grid gap-4 md:grid-cols-2">{filteredAssets.map((asset) => <AssetCard key={asset.ticker} asset={asset} favorite={favoriteSet.has(asset.ticker)} selected={selectedTicker === asset.ticker} onClick={() => setSelectedTicker(asset.ticker)} />)}</div>
+            </div>
           </div>
 
           <aside className="space-y-6">
@@ -1658,18 +1701,6 @@ function App() {
               </div>
             </div>
 
-            <div className="rounded-3xl border border-white/10 bg-white/[0.07] p-6 shadow-2xl shadow-black/20">
-              <div className="flex items-center justify-between gap-4"><div className="flex items-center gap-2"><Icon name="bell" className="bg-amber-300/10 text-amber-300" /><h2 className="text-xl font-bold text-white">Central de alertas</h2></div><button onClick={markAlertsAsRead} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300 hover:bg-white/10">Marcar lidos</button></div>
-              <div className="mt-4 flex items-center justify-between rounded-2xl border border-white/10 bg-black/20 p-3 text-sm"><div className="flex items-center gap-2 text-slate-300"><Icon name="eye" /><span>Alertas deste ativo</span></div><span className="font-bold text-white">{selectedAssetAlerts.length}</span></div>
-              <div className="mt-5 max-h-[440px] space-y-3 overflow-auto pr-1">
-                {alerts.length === 0 && <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-slate-400">Nenhum alerta ativo no momento.</div>}
-                {alerts.map((alert) => (
-                  <button key={alert.id} onClick={() => setSelectedTicker(alert.ticker)} className={`w-full rounded-2xl border p-4 text-left transition hover:scale-[1.01] ${alertClass(alert.severity)} ${alert.read ? "opacity-55" : "opacity-100"}`}>
-                    <div className="flex items-start gap-3"><div className="mt-1"><AlertIcon type={alert.type} severity={alert.severity} /></div><div><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold">{alert.title}</h3><span className="text-xs opacity-60">{alert.time}</span>{!alert.read && <span className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-bold">NOVO</span>}</div><p className="mt-1 text-sm leading-5 opacity-80">{alert.text}</p></div></div>
-                  </button>
-                ))}
-              </div>
-            </div>
           </aside>
         </section>
 
