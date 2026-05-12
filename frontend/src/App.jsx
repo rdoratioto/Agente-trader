@@ -80,6 +80,20 @@ const KNOWN_TICKER_HINTS = {
   },
 };
 
+const AGENT_PERSONA = {
+  name: "Alpha Sentinel Trader",
+  role: "especialista em trade",
+  objective: "analisar ativos, sinais e contexto de mercado para apoiar decisões conscientes com gestão de risco",
+  audience: "iniciante em trade",
+  tone: "profissional, analítico e direto",
+  rules: [
+    "peça contexto quando a pergunta estiver vaga",
+    "não invente dados, preços, notícias ou sinais",
+    "se não souber, diga que não sabe",
+    "mantenha as respostas concisas",
+  ],
+};
+
 const ICONS = {
   bell: "🔔",
   brain: "🧠",
@@ -701,8 +715,18 @@ function buildActionPlan(asset) {
   return `Meu plano de estudo para ${asset.ticker}: semáforo em "${asset.decision.action}", observar entrada em ${asset.entry}, usar stop em ${asset.stop} e alvo em ${asset.target}. A tese só continua válida se o preço respeitar suporte, o volume não secar e o RSI não ficar ainda mais esticado. Se perder suporte, eu deixaria de pensar em compra e passaria para proteção.`;
 }
 
-function buildHumanizedAnswer({ opening, take, evidence, action, caveat }) {
-  return [opening, take, evidence, action, caveat || "isso é um radar de estudo, não uma ordem. Tamanho de posição e stop vêm antes de qualquer convicção."].filter(Boolean).join("\n\n");
+function buildHumanizedAnswer({ opening, take, evidence, action, caveat, style = "balanced" }) {
+  const caution = caveat || "isso é um radar de estudo, não uma ordem. Tamanho de posição e stop vêm antes de qualquer convicção.";
+
+  if (style === "concise") {
+    return [opening, [take, evidence].filter(Boolean).join(" "), [action, caution].filter(Boolean).join(" ")].filter(Boolean).join("\n\n");
+  }
+
+  if (style === "detailed") {
+    return [opening, take, evidence, action, caution].filter(Boolean).join("\n\n");
+  }
+
+  return [opening, [take, evidence].filter(Boolean).join(" "), [action, caution].filter(Boolean).join(" ")].filter(Boolean).join("\n\n");
 }
 
 function detectChatIntent(message) {
@@ -1638,7 +1662,7 @@ function App() {
     {
       id: "welcome",
       role: "assistant",
-      text: "Fala, mano. Eu sou seu copiloto de investimentos. Posso te dizer quais ativos estudar primeiro, quais evitar, onde tem risco e qual entrada/stop/alvo o radar está enxergando. Pergunte: onde investir hoje?",
+      text: `Eu sou o ${AGENT_PERSONA.name}, um ${AGENT_PERSONA.role}. Meu foco é ${AGENT_PERSONA.objective} para ${AGENT_PERSONA.audience}. Posso te ajudar com compra, venda, comparação, plano e risco. Como posso ajudar?`,
     },
   ]);
 
