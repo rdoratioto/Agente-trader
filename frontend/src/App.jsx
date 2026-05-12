@@ -1123,25 +1123,24 @@ function DecisionSemaphore({ decision }) {
   ];
 
   return (
-    <div className={`rounded-3xl border p-5 ${decisionClass(decision.color)}`}>
-      <div className="flex items-start justify-between gap-4">
+    <div className={`rounded-2xl border p-4 ${decisionClass(decision.color)}`}>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <p className="text-xs font-black uppercase tracking-wide opacity-70">Semáforo de decisão</p>
-          <h3 className="mt-2 text-2xl font-black">{decision.action}</h3>
-          <p className="mt-2 text-sm leading-6 opacity-80">{decision.reason}</p>
+          <h3 className="mt-1 text-xl font-black">{decision.action}</h3>
+          <p className="mt-1 text-sm leading-6 opacity-80">{decision.reason}</p>
         </div>
-        <Icon name="scale" size={26} />
-      </div>
-      <div className="mt-5 grid grid-cols-5 gap-2">
-        {steps.map((step) => {
-          const active = step.state === decision.state;
-          return (
-            <div key={step.state} className={`rounded-2xl border border-white/10 p-2 text-center ${active ? "bg-white/15" : "bg-black/20 opacity-55"}`}>
-              <div className={`mx-auto h-3 w-3 rounded-full ${step.color} ${active ? "shadow-[0_0_18px_currentColor]" : ""}`} />
-              <p className="mt-2 text-[10px] font-bold">{step.label}</p>
-            </div>
-          );
-        })}
+        <div className="grid min-w-0 grid-cols-5 gap-2 lg:w-[420px]">
+          {steps.map((step) => {
+            const active = step.state === decision.state;
+            return (
+              <div key={step.state} className={`rounded-xl border border-white/10 p-2 text-center ${active ? "bg-white/15" : "bg-black/20 opacity-55"}`}>
+                <div className={`mx-auto h-2.5 w-2.5 rounded-full ${step.color} ${active ? "shadow-[0_0_18px_currentColor]" : ""}`} />
+                <p className="mt-1 text-[10px] font-bold">{step.label}</p>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -1266,18 +1265,17 @@ function NewsTicker({ news }) {
   const repeatedItems = [...items, ...items, ...items];
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-red-500/30 bg-slate-950 text-white shadow-2xl">
-      <div className="flex h-12 items-center overflow-hidden">
-        <div className="flex h-full shrink-0 items-center gap-2 bg-red-600 px-4 text-xs font-black uppercase tracking-wide">
+    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-slate-950/95 text-white shadow-2xl backdrop-blur">
+      <div className="flex h-10 items-center overflow-hidden">
+        <div className="flex h-full shrink-0 items-center gap-2 bg-cyan-600 px-3 text-[11px] font-black uppercase tracking-wide">
           <Icon name="news" size={14} />
           Mercado agora
         </div>
-        <div className="hidden h-full shrink-0 items-center border-r border-white/10 bg-white px-4 text-xs font-black uppercase text-slate-950 sm:flex">Radar</div>
         <div className="min-w-0 flex-1 overflow-hidden">
-          <div className="flex w-max animate-[ticker_55s_linear_infinite] items-center gap-8 whitespace-nowrap px-4 text-sm font-semibold">
+          <div className="flex w-max animate-[ticker_65s_linear_infinite] items-center gap-8 whitespace-nowrap px-4 text-xs font-semibold">
             {repeatedItems.map((item, index) => (
-              <a key={`${item.label}-${index}`} href={item.url} target="_blank" rel="noreferrer" className="text-slate-100 transition hover:text-red-200">
-                <span className="mr-3 text-red-300">●</span>{item.label}
+              <a key={`${item.label}-${index}`} href={item.url} target="_blank" rel="noreferrer" className="text-slate-200 transition hover:text-cyan-200">
+                <span className="mr-3 text-cyan-300">•</span>{item.label}
               </a>
             ))}
           </div>
@@ -1291,7 +1289,7 @@ function MarketNewsPanel({ news, updatedAt }) {
   const formattedUpdatedAt = updatedAt ? new Date(updatedAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "--";
 
   return (
-    <section className="mt-8 rounded-3xl border border-white/10 bg-white/[0.06] p-6 shadow-2xl shadow-black/20">
+    <section className="mt-8 rounded-2xl border border-white/10 bg-white/[0.04] p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="flex items-center gap-2 text-cyan-100">
@@ -1303,9 +1301,9 @@ function MarketNewsPanel({ news, updatedAt }) {
         <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs font-bold text-slate-300">Atualizado: {formattedUpdatedAt}</span>
       </div>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-3">
+      <div className="mt-5 grid gap-3 lg:grid-cols-3">
         {news.slice(0, 6).map((item) => (
-          <a key={`${item.source}-${item.title}`} href={item.url} target="_blank" rel="noreferrer" className="rounded-2xl border border-white/10 bg-black/20 p-4 transition hover:-translate-y-0.5 hover:bg-white/10">
+          <a key={`${item.source}-${item.title}`} href={item.url} target="_blank" rel="noreferrer" className="rounded-xl border border-white/10 bg-black/20 p-4 transition hover:bg-white/10">
             <div className="flex items-center justify-between gap-3">
               <span className="rounded-full bg-cyan-300/10 px-2 py-1 text-xs font-bold text-cyan-100">{item.source}</span>
               <span className="text-xs text-slate-500">{new Date(item.publishedAt).toLocaleDateString("pt-BR")}</span>
@@ -1662,13 +1660,12 @@ function App() {
           <button onClick={() => sendTelegramAlert(selectedAssetAlerts[0] || alerts[0])} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-300/30 bg-emerald-300/10 px-5 py-3 text-sm font-bold text-emerald-100 transition hover:bg-emerald-300/20"><Icon name="send" /> {telegramStatus === "sending" ? "Enviando..." : telegramStatus === "sent" ? "Telegram OK" : "Testar Telegram"}</button>
         </section>
 
-        <section className="mt-6 grid gap-4 lg:grid-cols-3">
-          <RadarSummaryCard icon="spark" label="Melhor estudo" title={radarSummary.best?.ticker || "--"} detail={`${radarSummary.best?.signal || "Sem sinal"} com score ${radarSummary.best?.score ?? "--"}/100 para perfil ${profile}.`} color="emerald" />
-          <RadarSummaryCard icon="alert" label="Maior atenção" title={radarSummary.riskiest?.ticker || "--"} detail={`${radarSummary.riskiest?.risk || "Risco não calculado"} e RSI ${radarSummary.riskiest?.rsi?.toFixed ? radarSummary.riskiest.rsi.toFixed(1) : "--"}.`} color="red" />
-          <RadarSummaryCard icon="star" label="Favoritos" title={`${favoriteTickers.length} ativos`} detail={favoriteTickers.length ? favoriteTickers.join(", ") : "Nenhum favorito marcado ainda."} color="amber" />
-        </section>
-
-        <section className="mt-6">
+        <section className="mt-6 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
+            <RadarSummaryCard icon="spark" label="Melhor estudo" title={radarSummary.best?.ticker || "--"} detail={`${radarSummary.best?.signal || "Sem sinal"} com score ${radarSummary.best?.score ?? "--"}/100.`} color="emerald" />
+            <RadarSummaryCard icon="alert" label="Maior atenção" title={radarSummary.riskiest?.ticker || "--"} detail={`${radarSummary.riskiest?.risk || "Risco não calculado"} · RSI ${radarSummary.riskiest?.rsi?.toFixed ? radarSummary.riskiest.rsi.toFixed(1) : "--"}.`} color="red" />
+            <RadarSummaryCard icon="star" label="Favoritos" title={`${favoriteTickers.length} ativos`} detail={favoriteTickers.length ? favoriteTickers.join(", ") : "Nenhum favorito."} color="amber" />
+          </div>
           <DecisionSemaphore decision={safeSelectedAsset.decision} />
         </section>
 
