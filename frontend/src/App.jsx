@@ -18,7 +18,8 @@ const SAFE_ENV = typeof import.meta !== "undefined" && import.meta.env ? import.
 const API_BASE_URL = SAFE_ENV.VITE_API_BASE_URL || "http://localhost:3001";
 const VAPID_PUBLIC_KEY = SAFE_ENV.VITE_VAPID_PUBLIC_KEY || "";
 const TELEGRAM_CHAT_ID = SAFE_ENV.VITE_TELEGRAM_CHAT_ID || "";
-const USE_BACKEND = SAFE_ENV.VITE_USE_BACKEND !== "false";
+const IS_GITHUB_PAGES = typeof window !== "undefined" && window.location.hostname.endsWith("github.io");
+const USE_BACKEND = !IS_GITHUB_PAGES && SAFE_ENV.VITE_USE_BACKEND !== "false";
 
 const WATCHLIST = ["PETR4", "VALE3", "BOVA11", "HASH11", "MXRF11"];
 
