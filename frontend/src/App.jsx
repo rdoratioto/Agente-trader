@@ -1123,20 +1123,20 @@ function DecisionSemaphore({ decision }) {
   ];
 
   return (
-    <div className={`rounded-2xl border p-4 ${decisionClass(decision.color)}`}>
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+    <div className={`self-start rounded-xl border p-3 ${decisionClass(decision.color)}`}>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <p className="text-xs font-black uppercase tracking-wide opacity-70">Semáforo de decisão</p>
-          <h3 className="mt-1 text-xl font-black">{decision.action}</h3>
-          <p className="mt-1 text-sm leading-6 opacity-80">{decision.reason}</p>
+          <h3 className="mt-1 text-lg font-black">{decision.action}</h3>
+          <p className="mt-1 text-xs leading-5 opacity-80">{decision.reason}</p>
         </div>
-        <div className="grid min-w-0 grid-cols-5 gap-2 lg:w-[420px]">
+        <div className="grid min-w-0 grid-cols-5 gap-1.5 lg:w-[320px]">
           {steps.map((step) => {
             const active = step.state === decision.state;
             return (
-              <div key={step.state} className={`rounded-xl border border-white/10 p-2 text-center ${active ? "bg-white/15" : "bg-black/20 opacity-55"}`}>
-                <div className={`mx-auto h-2.5 w-2.5 rounded-full ${step.color} ${active ? "shadow-[0_0_18px_currentColor]" : ""}`} />
-                <p className="mt-1 text-[10px] font-bold">{step.label}</p>
+              <div key={step.state} className={`rounded-lg border border-white/10 p-1.5 text-center ${active ? "bg-white/15" : "bg-black/20 opacity-55"}`}>
+                <div className={`mx-auto h-2 w-2 rounded-full ${step.color} ${active ? "shadow-[0_0_14px_currentColor]" : ""}`} />
+                <p className="mt-1 text-[9px] font-bold">{step.label}</p>
               </div>
             );
           })}
@@ -1660,7 +1660,7 @@ function App() {
           <button onClick={() => sendTelegramAlert(selectedAssetAlerts[0] || alerts[0])} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-300/30 bg-emerald-300/10 px-5 py-3 text-sm font-bold text-emerald-100 transition hover:bg-emerald-300/20"><Icon name="send" /> {telegramStatus === "sending" ? "Enviando..." : telegramStatus === "sent" ? "Telegram OK" : "Testar Telegram"}</button>
         </section>
 
-        <section className="mt-6 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+        <section className="mt-6 grid items-start gap-4 lg:grid-cols-[0.9fr_1.1fr]">
           <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
             <RadarSummaryCard icon="spark" label="Melhor estudo" title={radarSummary.best?.ticker || "--"} detail={`${radarSummary.best?.signal || "Sem sinal"} com score ${radarSummary.best?.score ?? "--"}/100.`} color="emerald" />
             <RadarSummaryCard icon="alert" label="Maior atenção" title={radarSummary.riskiest?.ticker || "--"} detail={`${radarSummary.riskiest?.risk || "Risco não calculado"} · RSI ${radarSummary.riskiest?.rsi?.toFixed ? radarSummary.riskiest.rsi.toFixed(1) : "--"}.`} color="red" />
