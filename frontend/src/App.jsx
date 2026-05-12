@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 /**
  * Agente Trader — MVP Dashboard
@@ -1292,6 +1292,7 @@ function Toast({ alert, onClose, onOpen }) {
 }
 
 function AgentChat({ messages, input, onInputChange, onSend, onQuickAsk }) {
+  const feedRef = useRef(null);
   const quickPrompts = [
     "Onde investir hoje?",
     "O que comprar?",
@@ -1302,6 +1303,11 @@ function AgentChat({ messages, input, onInputChange, onSend, onQuickAsk }) {
     "Sou agressivo",
     "Ver notícias Bloomberg",
   ];
+
+  useEffect(() => {
+    if (!feedRef.current) return;
+    feedRef.current.scrollTop = feedRef.current.scrollHeight;
+  }, [messages]);
 
   return (
     <div className="rounded-3xl border border-cyan-300/20 bg-cyan-300/10 p-5 shadow-2xl shadow-black/20">
@@ -1326,7 +1332,7 @@ function AgentChat({ messages, input, onInputChange, onSend, onQuickAsk }) {
         ))}
       </div>
 
-      <div className="mt-5 max-h-80 space-y-3 overflow-auto rounded-3xl border border-white/10 bg-black/25 p-4">
+      <div ref={feedRef} className="mt-5 max-h-80 space-y-3 overflow-auto rounded-3xl border border-white/10 bg-black/25 p-4">
         {messages.map((message) => (
           <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
             <div className={`max-w-[88%] whitespace-pre-line rounded-3xl border px-4 py-3 text-sm leading-6 ${message.role === "user" ? "border-cyan-300/20 bg-cyan-300/15 text-cyan-50" : "border-white/10 bg-white/10 text-slate-100"}`}>
