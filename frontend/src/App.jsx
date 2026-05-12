@@ -203,6 +203,39 @@ function formatVolume(value) {
   return String(number);
 }
 
+function getSaoPauloMarketStatus(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Sao_Paulo",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const weekday = parts.find((part) => part.type === "weekday")?.value;
+  const hour = Number(parts.find((part) => part.type === "hour")?.value || 0);
+  const minute = Number(parts.find((part) => part.type === "minute")?.value || 0);
+  const minutes = hour * 60 + minute;
+  const isWeekend = weekday === "Sat" || weekday === "Sun";
+
+  if (isWeekend) {
+    return { label: "Mercado fechado", detail: "Fim de semana na B3", state: "closed" };
+  }
+
+  if (minutes >= 10 * 60 && minutes <= 17 * 60 + 55) {
+    return { label: "Mercado aberto", detail: "Pregão regular da B3", state: "open" };
+  }
+
+  if (minutes >= 9 * 60 + 30 && minutes < 10 * 60) {
+    return { label: "Pré-abertura", detail: "Abertura regular às 10:00", state: "preopen" };
+  }
+
+  if (minutes > 17 * 60 + 55 && minutes <= 18 * 60 + 30) {
+    return { label: "Pós-mercado", detail: "Pregão regular encerrado", state: "after" };
+  }
+
+  return { label: "Mercado fechado", detail: "Fora do horário regular da B3", state: "closed" };
+}
+
 function average(values) {
   if (!Array.isArray(values) || values.length === 0) return 0;
   return values.reduce((sum, value) => sum + Number(value || 0), 0) / values.length;
@@ -973,6 +1006,23 @@ function MetricHeader({ icon, label, value }) {
   );
 }
 
+function MarketStatusBadge({ status }) {
+  const classes = {
+    open: "border-emerald-300/30 bg-emerald-300/15 text-emerald-100",
+    preopen: "border-amber-300/30 bg-amber-300/15 text-amber-100",
+    after: "border-cyan-300/30 bg-cyan-300/15 text-cyan-100",
+    closed: "border-red-300/30 bg-red-300/15 text-red-100",
+  };
+
+  return (
+    <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-bold ${classes[status.state] || classes.closed}`}>
+      <span className={`h-2 w-2 rounded-full ${status.state === "open" ? "bg-emerald-300" : status.state === "closed" ? "bg-red-300" : "bg-amber-300"}`} />
+      {status.label}
+      <span className="hidden text-xs font-medium opacity-70 sm:inline">{status.detail}</span>
+    </div>
+  );
+}
+
 function SmallBox({ label, value, color = "text-white" }) {
   return (
     <div className="rounded-2xl bg-white/5 p-4">
@@ -1115,6 +1165,7 @@ function App() {
   const [webPushStatus, setWebPushStatus] = useState("not_configured");
   const [telegramStatus, setTelegramStatus] = useState("idle");
   const [chatInput, setChatInput] = useState("");
+  const [marketStatus, setMarketStatus] = useState(() => getSaoPauloMarketStatus());
   const [chatMessages, setChatMessages] = useState(() => [
     {
       id: "welcome",
@@ -1293,6 +1344,11 @@ function App() {
   }, [toast]);
 
   useEffect(() => {
+    const interval = setInterval(() => setMarketStatus(getSaoPauloMarketStatus()), 30_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
     writeStoredJson(STORAGE_KEYS.favorites, favoriteTickers);
   }, [favoriteTickers]);
 
@@ -1379,7 +1435,10 @@ function App() {
       <main className="relative mx-auto max-w-7xl px-5 py-8 lg:px-8">
         <header className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-sm text-cyan-200"><Icon name="brain" size={16} /> Agente Trader com IA</div>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-sm text-cyan-200"><Icon name="brain" size={16} /> Agente Trader com IA</div>
+              <MarketStatusBadge status={marketStatus} />
+            </div>
             <h1 className="mt-5 text-4xl font-black tracking-tight text-white md:text-6xl">Alertas internos em <span className="text-cyan-300">tempo real</span></h1>
             <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">Versão limpa, com fallback seguro, backend opcional e sem dependências externas de ícones/gráficos.</p>
           </div>
