@@ -718,13 +718,46 @@ function detectChatIntent(message) {
   return "general";
 }
 
+function detectReplyStyle(message, memory) {
+  const text = normalizeText(message);
+  const concise = [
+    "resumo",
+    "curto",
+    "rápido",
+    "rapido",
+    "direto",
+    "só responde",
+    "so responde",
+    "objetivo",
+    "kk",
+    "haha",
+  ].some((term) => text.includes(term));
+  const detailed = [
+    "detalha",
+    "detalhar",
+    "explica",
+    "explique",
+    "mais",
+    "completo",
+    "passo a passo",
+    "por quê",
+    "porque",
+  ].some((term) => text.includes(term));
+
+  if (concise) return "concise";
+  if (detailed) return "detailed";
+  if (memory?.preferredDetailLevel) return memory.preferredDetailLevel;
+  return "balanced";
+}
+
 function resolveConversationTicker(message, memory) {
   const explicit = extractTickerFromMessage(message);
   if (explicit) return explicit;
 
   const text = normalizeText(message);
-  const refersBack = /\b(ele|ela|esse|essa|isso|aquele|aquela|o papel|a ação|o ativo|esse papel|essa ação|esse ativo|nele|nela)\b/.test(text);
-  if (refersBack && memory?.lastTicker) return memory.lastTicker;
+  const refersBack = /\b(ele|ela|esse|essa|isso|aquele|aquela|o papel|a ação|o ativo|esse papel|essa ação|esse ativo|esse ativo|nele|nela|o mesmo|a mesma|esse mesmo|essa mesma)\b/.test(text);
+  const rememberedTicker = memory?.lastTicker || (typeof memory?.lastTopic === "string" && /\b[A-Z]{4}\d{1,2}\b/.test(memory.lastTopic) ? memory.lastTopic : "");
+  if (refersBack && rememberedTicker) return rememberedTicker;
 
   return null;
 }
@@ -857,15 +890,20 @@ async function buildResearchBackedAnswer({ message, assets, profile, newsFeed = 
   const digest = buildResearchDigest(combinedArticles);
   const narrative = buildResearchNarrative(combinedArticles);
   const focusAsset = matchedAsset || rankAssetsForConversation(safeAssets, profile)[0] || null;
+  const style = detectReplyStyle(message);
 
   if (matchedAsset) {
     return {
       focusTicker: matchedAsset.ticker,
       text: buildHumanizedAnswer({
-        opening: `Fui olhar ${matchedAsset.ticker} no radar técnico e puxei o que saiu de mais recente para dar contexto.`,
-        take: describeAssetShort(matchedAsset),
-        evidence: `No noticiário recente, o tom ficou assim: ${narrative}`,
-        action: `Se eu fosse te responder de forma prática, eu começaria por ${buildActionPlan(matchedAsset).replace(/^Meu plano de estudo para [^:]+:\s*/u, "")}`,
+        opening: style === "concise"
+          ? `Olhei ${matchedAsset.ticker} com contexto recente.`
+          : `Fui olhar ${matchedAsset.ticker} no radar técnico e puxei o que saiu de mais recente para dar contexto.`,
+        take: style === "concise" ? `${matchedAsset.signal}, risco ${matchedAsset.risk}, RSI ${matchedAsset.rsi.toFixed(1)}.` : describeAssetShort(matchedAsset),
+        evidence: style === "concise" ? narrative : `No noticiário recente, o tom ficou assim: ${narrative}`,
+        action: style === "concise"
+          ? `Eu começaria por ${buildActionPlan(matchedAsset).replace(/^Meu plano de estudo para [^:]+:\s*/u, "")}`
+          : `Se eu fosse te responder de forma prática, eu começaria por ${buildActionPlan(matchedAsset).replace(/^Meu plano de estudo para [^:]+:\s*/u, "")}`,
         caveat: `eu não vou te vender certeza: ${digest || "o contexto recente não fechou uma tese limpa."}`,
       }),
     };
@@ -875,10 +913,14 @@ async function buildResearchBackedAnswer({ message, assets, profile, newsFeed = 
     return {
       focusTicker: ticker,
       text: buildHumanizedAnswer({
-        opening: `Fui buscar ${ticker} na leitura recente para te responder com contexto, não no automático.`,
+        opening: style === "concise"
+          ? `Puxei ${ticker} com contexto recente.`
+          : `Fui buscar ${ticker} na leitura recente para te responder com contexto, não no automático.`,
         take: buildTickerHintAnswer(ticker, profile, narrative) || `eu tratei ${ticker} como um radar de estudo.`,
-        evidence: `O que pesa agora é isso: ${narrative}`,
-        action: `Se você quiser, eu adiciono esse ticker à watchlist e sigo com leitura técnica.`,
+        evidence: style === "concise" ? narrative : `O que pesa agora é isso: ${narrative}`,
+        action: style === "concise"
+          ? "Se quiser, eu sigo com leitura técnica ou comparo com outro papel."
+          : `Se você quiser, eu adiciono esse ticker à watchlist e sigo com leitura técnica.`,
         caveat: `sem preço carregado, eu fico no contexto e no tom de mercado, não no chute.`,
       }),
     };
@@ -887,9 +929,9 @@ async function buildResearchBackedAnswer({ message, assets, profile, newsFeed = 
   return {
     focusTicker: focusAsset?.ticker,
     text: buildHumanizedAnswer({
-      opening: "Fui buscar contexto recente para não te responder no escuro.",
+      opening: style === "concise" ? "Puxei contexto recente para não responder no escuro." : "Fui buscar contexto recente para não te responder no escuro.",
       take: focusAsset ? `${focusAsset.ticker} é o nome que mais chama atenção no radar agora.` : "não apareceu um ativo com vantagem clara.",
-      evidence: narrative,
+      evidence: style === "concise" ? narrative : narrative,
       action: focusAsset ? `Se você quiser, eu aprofundo em ${focusAsset.ticker} com plano e semáforo.` : "Se me disser o perfil ou o papel, eu afunilo a resposta.",
       caveat: digest || "isso é apoio de estudo, não execução automática.",
     }),
@@ -904,12 +946,13 @@ function buildInvestmentAnswer(message, assets, profile) {
   const weak = [...safeAssets].sort((a, b) => a.score - b.score).slice(0, 2);
   const strong = best[0];
   const tickerFromMessage = extractTickerFromMessage(message);
+  const style = detectReplyStyle(message);
 
   if (text.includes("plano") || text.includes("entrada") || text.includes("stop") || text.includes("alvo")) {
     return {
       focusTicker: strong?.ticker,
       text: buildHumanizedAnswer({
-        opening: "Boa. Vou pensar como se a gente estivesse montando uma operação no papel, com critério e sem impulso.",
+        opening: style === "concise" ? "Vou montar isso como operação." : "Boa. Vou pensar como se a gente estivesse montando uma operação no papel, com critério e sem impulso.",
         take: strong ? `eu começaria estudando ${strong.ticker}, mas sem entrar no automático.` : "não apareceu um ativo forte o suficiente para virar plano agora.",
         evidence: strong ? describeAssetShort(strong) : "o radar não encontrou assimetria clara.",
         action: buildActionPlan(strong),
@@ -1590,7 +1633,7 @@ function App() {
   const [chatInput, setChatInput] = useState("");
   const [marketStatus, setMarketStatus] = useState(() => getSaoPauloMarketStatus());
   const [marketNews, setMarketNews] = useState({ updatedAt: "", items: FALLBACK_NEWS });
-  const [chatMemory, setChatMemory] = useState(() => readStoredJson(STORAGE_KEYS.chatMemory, { lastTicker: "", lastIntent: "general", lastMessage: "" }));
+  const [chatMemory, setChatMemory] = useState(() => readStoredJson(STORAGE_KEYS.chatMemory, { lastTicker: "", lastIntent: "general", lastMessage: "", preferredDetailLevel: "balanced", lastTopic: "" }));
   const [chatMessages, setChatMessages] = useState(() => [
     {
       id: "welcome",
@@ -1833,6 +1876,7 @@ function App() {
 
     try {
       const intent = detectChatIntent(prompt);
+      const replyStyle = detectReplyStyle(prompt, chatMemory);
       const resolvedTicker = resolveConversationTicker(prompt, chatMemory);
       let answer = await buildResearchBackedAnswer({
         message: prompt,
@@ -1857,6 +1901,8 @@ function App() {
         lastTicker: answer.focusTicker || resolvedTicker || chatMemory.lastTicker || "",
         lastIntent: intent,
         lastMessage: prompt,
+        lastTopic: answer.focusTicker || resolvedTicker || intent,
+        preferredDetailLevel: replyStyle,
         updatedAt: new Date().toISOString(),
       });
 
@@ -1872,6 +1918,8 @@ function App() {
         lastTicker: fallbackAnswer.focusTicker || chatMemory.lastTicker || "",
         lastIntent: detectChatIntent(prompt),
         lastMessage: prompt,
+        lastTopic: fallbackAnswer.focusTicker || detectChatIntent(prompt),
+        preferredDetailLevel: detectReplyStyle(prompt, chatMemory),
         updatedAt: new Date().toISOString(),
       });
 
