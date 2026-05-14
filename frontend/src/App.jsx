@@ -21,7 +21,7 @@ const TELEGRAM_CHAT_ID = SAFE_ENV.VITE_TELEGRAM_CHAT_ID || "";
 const IS_GITHUB_PAGES = typeof window !== "undefined" && window.location.hostname.endsWith("github.io");
 const USE_BACKEND = !IS_GITHUB_PAGES && SAFE_ENV.VITE_USE_BACKEND !== "false";
 
-const WATCHLIST = ["PETR4", "VALE3", "BOVA11", "HASH11", "MXRF11"];
+const WATCHLIST = ["PETR4", "VALE3", "BBAS3", "BOVA11", "HASH11", "MXRF11"];
 const FALLBACK_NEWS = [
   {
     title: "Radar de mercado em modo demo",
@@ -208,6 +208,17 @@ const fallbackRawAssets = [
     source: "Simulado",
     updatedAt: "--",
     closes: [65.1, 64.8, 64.2, 63.7, 64.0, 63.6, 63.1, 62.8, 62.4, 62.1, 62.0, 61.9, 62.2, 61.7, 61.5, 61.2, 61.6, 61.8, 61.5, 61.43],
+  },
+  {
+    ticker: "BBAS3",
+    name: "Banco do Brasil ON",
+    category: "Ação",
+    price: 27.86,
+    change: 0.74,
+    volume: 18600000,
+    source: "Simulado",
+    updatedAt: "--",
+    closes: [25.9, 26.1, 26.4, 26.2, 26.6, 26.8, 26.7, 27.0, 27.2, 27.1, 27.4, 27.6, 27.5, 27.8, 27.7, 27.9, 28.1, 27.95, 27.82, 27.86],
   },
   {
     ticker: "BOVA11",
