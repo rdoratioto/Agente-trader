@@ -1842,7 +1842,7 @@ function App() {
 
   useEffect(() => {
     loadMarketData();
-    const interval = setInterval(loadMarketData, 60_000);
+    const interval = setInterval(loadMarketData, 180_000);
     return () => clearInterval(interval);
   }, []);
 
